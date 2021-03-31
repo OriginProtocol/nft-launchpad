@@ -1,0 +1,31 @@
+{
+  "name": "blau",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.0.2",
+    "@nomiclabs/hardhat-waffle": "^2.0.1",
+    "@openzeppelin/contracts": "^4.0.0",
+    "chai": "^4.3.4",
+    "eslint": "^7.23.0",
+    "ethereum-waffle": "^3.3.0",
+    "ethers": "^5.0.32",
+    "hardhat": "^2.1.2",
+    "hardhat-deploy": "^0.7.0-beta.38",
+    "hardhat-deploy-ethers": "^0.3.0-beta.7",
+    "prettier": "^2.2.1"
+  },
+  "scripts": {
+    "start": "npx hardhat node --export './network.json'",
+    "compile": "npx hardhat compile",
+    "deploy": "npx hardhat deploy --export './network.json'",
+    "test": "npx hardhat test"
+  },
+  "dependencies": {
+    "@nomiclabs/hardhat-etherscan": "^2.1.1",
+    "commander": "^7.2.0",
+    "dotenv": "^8.2.0",
+    "lodash": "^4.17.21"
+  }
+}
