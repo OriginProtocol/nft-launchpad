@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["es2020"],
+    "target": "es2018",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "allowJs": true,
+    "paths": {
+      "common": ["../common/*"]
+    }
+  },
+  "include": ["./scripts", "./test"],
+  "files": ["./hardhat.config.js"],
+}
