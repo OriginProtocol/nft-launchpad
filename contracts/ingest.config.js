@@ -1,5 +1,5 @@
 const placeholders = {
-    "IngestRegistry": "0xffbebebebebebebebebebebebebebebeaaaaaaaa",
+  IngestRegistry: '0xffbebebebebebebebebebebebebebebeaaaaaaaa'
 }
 
 module.exports = { placeholders }

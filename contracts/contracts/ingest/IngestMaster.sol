@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+/**
+ * @title Ingest Master Contract
+ * @author Origin Protocol Inc
+ */
+
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
@@ -26,6 +31,7 @@ contract IngestMaster is Governable, Initializable {
     }
 
     function getAddress(bytes32 salt) external view returns (address) {
+        require(midProxy != address(0), 'MidProxy must be set');
         return midProxy.predictDeterministicAddress(salt);
     }
 

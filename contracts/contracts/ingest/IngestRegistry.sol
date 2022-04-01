@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+/**
+ * @title Ingest Registry Contract
+ * @author Origin Protocol Inc
+ */
+
 import "../governance/Governable.sol";
 
 contract IngestRegistry is Governable {
-    address public endpointImplimentation;
+    address public endpointImplementation;
     address public master;
     address public pool;
 
-    event NewEndpointImplimentation(
+    event NewEndpointImplementation(
         address indexed newCollector,
         address indexed oldCollector
     );
@@ -17,9 +22,9 @@ contract IngestRegistry is Governable {
 
     event NewPool(address indexed newPool, address indexed oldPool);
 
-    function setEndpointImplimentation(address addr) external onlyGovernor {
-        emit NewEndpointImplimentation(addr, endpointImplimentation);
-        endpointImplimentation = addr;
+    function setEndpointImplementation(address addr) external onlyGovernor {
+        emit NewEndpointImplementation(addr, endpointImplementation);
+        endpointImplementation = addr;
     }
 
     function setMaster(address addr) external onlyGovernor {

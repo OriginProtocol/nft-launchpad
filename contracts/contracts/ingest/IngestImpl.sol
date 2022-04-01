@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+/**
+ * @title Ingest Implementation Contract
+ * @author Origin Protocol Inc
+ */
+
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./IngestRegistry.sol";
 
@@ -28,5 +33,9 @@ contract IngestImpl {
         }
     }
 
-    receive() external payable {}
+    receive() external payable {
+    }
+    
+    fallback() external payable {
+    }
 }

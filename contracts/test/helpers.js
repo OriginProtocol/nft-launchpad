@@ -1,5 +1,5 @@
-const hre = require("hardhat")
-const { createFixtureLoader } = require("ethereum-waffle")
+const hre = require('hardhat')
+const { createFixtureLoader } = require('ethereum-waffle')
 
 const loadFixture = createFixtureLoader(
   [
@@ -12,10 +12,10 @@ const loadFixture = createFixtureLoader(
     hre.ethers.provider.getSigner(6),
     hre.ethers.provider.getSigner(7),
     hre.ethers.provider.getSigner(8),
-    hre.ethers.provider.getSigner(9),
+    hre.ethers.provider.getSigner(9)
   ],
   hre.ethers.provider
-);
+)
 
 const getGas = async (tx) => {
   const receipt = await ethers.provider.getTransactionReceipt(tx.hash)
