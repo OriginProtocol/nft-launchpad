@@ -1,11 +1,3 @@
-// SPDX-License-Identifier: MIT
-/*****************************************************************************
- * DO NOT USE
- * ----------
- * This contract has a known reentrancy exploit that may allow an attacker to
- * bypass mint limits.  Use v5 or one of the ERC721a contracts.
- ****************************************************************************/
-
 /*
  * Origin Protocol
  * https://originprotocol.com
@@ -37,27 +29,19 @@
 
 pragma solidity ^0.8.0;
 
-import '@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol';
-import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
-import '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/finance/PaymentSplitterUpgradeable.sol';
+import 'erc721a/contracts/ERC721A.sol';
 
-contract OriginERC721_v4 is
-    ERC721EnumerableUpgradeable,
-    AccessControlUpgradeable,
-    PaymentSplitterUpgradeable
-{
-    bytes32 public constant MINTER_ROLE = keccak256('MINTER_ROLE');
-    mapping(address => uint256) private _mintCount;
+import '@openzeppelin/contracts/access/AccessControl.sol';
+import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
+import '@openzeppelin/contracts/finance/PaymentSplitter.sol';
+
+contract OriginERC721a_v2 is ERC721A, PaymentSplitter, AccessControl {
+    bytes32 public constant MINTER_ROLE = keccak256('MINTER');
     string public baseURI;
     uint256 public maxSupply;
+    address public owner;
 
-    using CountersUpgradeable for CountersUpgradeable.Counter;
-    CountersUpgradeable.Counter private _tokenIdTracker;
-
-    function initialize(
-        address _owner,
+    constructor(
         string memory _name,
         string memory _symbol,
         string memory _base,
@@ -65,17 +49,13 @@ contract OriginERC721_v4 is
         address _minter,
         address[] memory _payees,
         uint256[] memory _shares
-    ) public initializer {
+    ) ERC721A(_name, _symbol) PaymentSplitter(_payees, _shares) {
         require(_maxSupply > 0);
-        __AccessControl_init();
-        // __ERC721Enumerable_init() does not set token name and symbol, but
-        // otherwise is the same.
-        __ERC721_init(_name, _symbol);
-        __PaymentSplitter_init(_payees, _shares);
         baseURI = _base;
         maxSupply = _maxSupply;
+        owner = _msgSender();
 
-        _setupRole(DEFAULT_ADMIN_ROLE, _owner);
+        _setupRole(DEFAULT_ADMIN_ROLE, owner);
 
         if (_minter != address(0)) {
             _setupRole(MINTER_ROLE, _minter);
@@ -88,10 +68,14 @@ contract OriginERC721_v4 is
         public
         view
         virtual
-        override(ERC721EnumerableUpgradeable, AccessControlUpgradeable)
+        override(ERC721A, AccessControl)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
+    }
+
+    function _baseURI() internal view override returns (string memory) {
+        return baseURI;
     }
 
     /**
@@ -99,24 +83,18 @@ contract OriginERC721_v4 is
      * @return URI to JSON file
      */
     function contractURI() public view returns (string memory) {
+        string memory base = _baseURI();
         return
-            bytes(baseURI).length > 0
-                ? string(abi.encodePacked(baseURI, 'contract.json'))
+            bytes(base).length > 0
+                ? string(abi.encodePacked(base, 'contract.json'))
                 : '';
     }
 
-    /**
-     * @notice Change the base url for all NFTs
-     */
     function setBaseURI(string calldata _base)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         baseURI = _base;
-    }
-
-    function _baseURI() internal view override returns (string memory) {
-        return baseURI;
     }
 
     /**
@@ -135,7 +113,7 @@ contract OriginERC721_v4 is
         uint256 expires,
         bytes memory sig
     ) external payable {
-        require(_mintCount[to] + count <= mintLimit, 'Max mint limit');
+        require(_numberMinted(to) + count <= mintLimit, 'Max mint limit');
         require(totalSupply() + count <= maxSupply, 'Max supply exceeded');
         require(block.timestamp <= expires, 'Signature expired');
         require(msg.value >= price, 'Not enough ETH');
@@ -159,10 +137,10 @@ contract OriginERC721_v4 is
         );
         require(hasRole(MINTER_ROLE, addr), 'Invalid signer');
 
-        for (uint256 i = 0; i < count; i++) {
-            _tokenIdTracker.increment();
-            _safeMint(to, _tokenIdTracker.current());
-        }
-        _mintCount[to] += count;
+        _safeMint(to, count);
+    }
+
+    function _startTokenId() internal view virtual override returns (uint256) {
+        return 1;
     }
 }

@@ -1,11 +1,4 @@
 // SPDX-License-Identifier: MIT
-/*****************************************************************************
- * DO NOT USE
- * ----------
- * This contract has a known reentrancy exploit that may allow an attacker to
- * bypass mint limits.  Use v5 or one of the ERC721a contracts.
- ****************************************************************************/
-
 /*
  * Origin Protocol
  * https://originprotocol.com
@@ -43,7 +36,7 @@ import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 import '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/finance/PaymentSplitterUpgradeable.sol';
 
-contract OriginERC721_v4 is
+contract OriginERC721_v5 is
     ERC721EnumerableUpgradeable,
     AccessControlUpgradeable,
     PaymentSplitterUpgradeable
@@ -52,6 +45,7 @@ contract OriginERC721_v4 is
     mapping(address => uint256) private _mintCount;
     string public baseURI;
     uint256 public maxSupply;
+    address public owner;
 
     using CountersUpgradeable for CountersUpgradeable.Counter;
     CountersUpgradeable.Counter private _tokenIdTracker;
@@ -74,6 +68,7 @@ contract OriginERC721_v4 is
         __PaymentSplitter_init(_payees, _shares);
         baseURI = _base;
         maxSupply = _maxSupply;
+        owner = _owner;
 
         _setupRole(DEFAULT_ADMIN_ROLE, _owner);
 
@@ -159,10 +154,11 @@ contract OriginERC721_v4 is
         );
         require(hasRole(MINTER_ROLE, addr), 'Invalid signer');
 
+        _mintCount[to] += count;
+
         for (uint256 i = 0; i < count; i++) {
             _tokenIdTracker.increment();
             _safeMint(to, _tokenIdTracker.current());
         }
-        _mintCount[to] += count;
     }
 }

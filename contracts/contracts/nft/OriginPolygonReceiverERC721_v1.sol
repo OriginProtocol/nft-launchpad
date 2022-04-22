@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 
@@ -28,7 +29,7 @@ contract OriginPolygonReceiverERC721_v1 is
         string memory name_,
         string memory symbol_,
         string memory baseURI_
-    ) public ERC721(name_, symbol_) {
+    ) ERC721(name_, symbol_) {
         _base = baseURI_;
         _setupContractId("ChildMintableERC721");
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());

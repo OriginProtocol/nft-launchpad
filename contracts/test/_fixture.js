@@ -33,6 +33,9 @@ async function defaultFixture() {
   await deployments.deploy('OriginERC721_v4', { from: masterAddr })
   await deployments.deploy('OriginERC721_v4Factory', { from: masterAddr })
 
+  await deployments.deploy('OriginERC721_v5', { from: masterAddr })
+  await deployments.deploy('OriginERC721_v5Factory', { from: masterAddr })
+
   const dummyPolygonChainManagerAddress =
     '0x62CdCbfA146DF4961A039EB50d26bf89938A08de'
   await deployments.deploy('OriginPolygonERC721_v2', {
@@ -69,13 +72,29 @@ async function defaultFixture() {
     ]
   })
 
+  await deployments.deploy('OriginERC721a_v2', {
+    from: deployerAddr,
+    args: [
+      'Origin NFT',
+      'ORIGIN',
+      'https://nft.origin.eth/nft/',
+      10,
+      masterAddr,
+      [masterAddr],
+      [1]
+    ]
+  })
+
   const blau = await ethers.getContract('OriginERC721_v1')
   const nftv2 = await ethers.getContract('OriginERC721_v2')
   const nftv3 = await ethers.getContract('OriginERC721_v3')
   const nftv4 = await ethers.getContract('OriginERC721_v4')
+  const nftv5 = await ethers.getContract('OriginERC721_v5')
   const nft721a = await ethers.getContract('OriginERC721a_v1')
+  const nft721a_v2 = await ethers.getContract('OriginERC721a_v2')
   const factory = await ethers.getContract('OriginERC721_v3Factory')
   const factoryV4 = await ethers.getContract('OriginERC721_v4Factory')
+  const factoryV5 = await ethers.getContract('OriginERC721_v5Factory')
   const polygonV2 = await ethers.getContract('OriginPolygonERC721_v2')
   const polygonV3 = await ethers.getContract('OriginPolygonERC721_v3')
 
@@ -110,9 +129,12 @@ async function defaultFixture() {
     nftv2,
     nftv3,
     nftv4,
+    nftv5,
     nft721a,
+    nft721a_v2,
     factory,
     factoryV4,
+    factoryV5,
     polygonV2,
     polygonV3,
     master,

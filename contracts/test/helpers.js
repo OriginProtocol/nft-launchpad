@@ -22,7 +22,46 @@ const getGas = async (tx) => {
   return receipt.gasUsed.toString()
 }
 
+async function getSigForMintV5({
+  signer,
+  token,
+  buyer,
+  count,
+  price,
+  mintLimit,
+  expires
+}) {
+  const net = await ethers.provider.getNetwork()
+
+  const hash = ethers.utils.keccak256(
+    ethers.utils.defaultAbiCoder.encode(
+      [
+        'uint',
+        'address',
+        'address',
+        'address',
+        'uint256',
+        'uint256',
+        'uint256',
+        'uint256'
+      ],
+      [
+        net.chainId,
+        token.address,
+        buyer,
+        buyer,
+        count,
+        price,
+        mintLimit,
+        expires
+      ]
+    )
+  )
+  return await signer.signMessage(ethers.utils.arrayify(hash))
+}
+
 module.exports = {
   loadFixture,
-  getGas
+  getGas,
+  getSigForMintV5
 }

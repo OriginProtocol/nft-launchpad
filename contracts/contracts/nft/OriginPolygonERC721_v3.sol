@@ -64,7 +64,7 @@ contract OriginPolygonERC721_v3 is
         string memory baseURI_,
         address childChainManager,
         address minter
-    ) public ERC721(name_, symbol_) {
+    ) ERC721(name_, symbol_) {
         _base = baseURI_;
         _setupContractId("ChildMintableERC721");
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());

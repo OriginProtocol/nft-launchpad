@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 /*
  * Origin Protocol
  * https://originprotocol.com
