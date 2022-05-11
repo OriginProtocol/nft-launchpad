@@ -1,5 +1,9 @@
 const hre = require('hardhat')
 
+const { MINTER_ROLE, MINTER_ADMIN_ROLE } = require('./staking/_const')
+
+const { blockStamp, expectSuccess, ONE_THOUSAND_OGN } = require('./helpers')
+
 async function defaultFixture() {
   await deployments.fixture()
 
@@ -145,6 +149,86 @@ async function defaultFixture() {
   }
 }
 
+async function stakingFixture() {
+  const { deployerAddr, masterAddr } = await getNamedAccounts()
+
+  const deployer = ethers.provider.getSigner(deployerAddr)
+  const master = ethers.provider.getSigner(masterAddr)
+
+  await deployments.deploy('MockOGN', { from: deployerAddr })
+  const mockOGN = await ethers.getContract('MockOGN')
+
+  const seriesProxy = await ethers.getContract('SeriesProxy')
+  const series = await ethers.getContractAt('Series', seriesProxy.address)
+
+  const stOGNProxy = await ethers.getContract('StOGNProxy')
+  const stOGN = await ethers.getContractAt('StOGN', stOGNProxy.address)
+
+  const feeVaultProxy = await ethers.getContract('FeeVaultProxy')
+  const feeVault = await ethers.getContractAt('FeeVault', feeVaultProxy.address)
+
+  const seasonOne = await ethers.getContract('SeasonOne')
+  const seasonTwo = await ethers.getContract('SeasonTwo')
+
+  async function createUser(signer) {
+    return {
+      signer,
+      address: await signer.getAddress(),
+      originalBalanceETH: await signer.getBalance(),
+      originalBalanceOGN: ethers.BigNumber.from(0)
+    }
+  }
+
+  async function allowOGN(account, spenderAddress, amount) {
+    return await mockOGN.connect(account).approve(spenderAddress, amount)
+  }
+
+  async function fundOGN(toAddress, amount) {
+    return await mockOGN.connect(deployer).mint(toAddress, amount)
+  }
+
+  async function userStake(user, amount = ONE_THOUSAND_OGN) {
+    await fundOGN(user.address, amount)
+    user.originalBalanceOGN = await mockOGN.balanceOf(user.address)
+    await allowOGN(user.signer, series.address, amount)
+    await expectSuccess(series.connect(user.signer).stake(amount))
+    user.timestamp = await blockStamp()
+    const endTime = await seasonOne.endTime()
+    const lockPeriod = await seasonOne.lockPeriod()
+    const season = endTime.sub(lockPeriod).gt(user.timestamp)
+      ? seasonOne
+      : seasonTwo
+    user.points = await season.getPoints(user.address)
+  }
+
+  const users = {
+    alice: await createUser(await ethers.provider.getSigner(6)),
+    bob: await createUser(await ethers.provider.getSigner(7)),
+    charlie: await createUser(await ethers.provider.getSigner(8)),
+    diana: await createUser(await ethers.provider.getSigner(9)),
+    elaine: await createUser(await ethers.provider.getSigner(10))
+  }
+
+  return {
+    master,
+    deployer,
+    feeVault,
+    feeVaultProxy,
+    seasonOne,
+    seasonTwo,
+    mockOGN,
+    series,
+    stOGN,
+    userStake,
+    createUser,
+    allowOGN,
+    fundOGN,
+    users,
+    nobody: await ethers.provider.getSigner(11)
+  }
+}
+
 module.exports = {
-  defaultFixture
+  defaultFixture,
+  stakingFixture
 }
