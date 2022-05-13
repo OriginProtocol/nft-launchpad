@@ -27,5 +27,7 @@ const deployNFT = async ({ getNamedAccounts, deployments }) => {
 
 deployNFT.id = '006_nftv4'
 deployNFT.tags = ['nft']
+// deprecated
+deployNFT.skip = () => true
 
 module.exports = deployNFT
