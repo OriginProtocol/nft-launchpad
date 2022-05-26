@@ -155,6 +155,7 @@ contract SeasonTwo is Context, ISeason {
     function pointsInTime(uint256 amount, uint256 blockStamp)
         external
         view
+        override
         returns (uint256)
     {
         return _pointsInTime(amount, blockStamp);
@@ -281,23 +282,17 @@ contract SeasonTwo is Context, ISeason {
      *      have been minted in the same tx before this has been called.
      *
      * @param userAddress - the user staking their OGN
-     * @return total OGN staked
+     * @param amount - the amount of (st)OGN being staked
      * @return total points received for the user's stake
      */
-    function stake(address userAddress)
+    function stake(address userAddress, uint256 amount)
         external
         override
         onlySeries
         ready
         canStake
-        returns (uint128, uint128)
+        returns (uint128)
     {
-        IStOGN stOGN = IStOGN(series.stOGN());
-
-        // Get the amount we're staking now (the new amount of stOGN)
-        uint256 amount = stOGN.balanceOf(userAddress) -
-            stOGN.balanceAt(userAddress, block.timestamp - 1);
-
         require(amount > 0, 'SeasonOne: No incoming stOGN');
 
         // calculate stake points
@@ -321,7 +316,7 @@ contract SeasonTwo is Context, ISeason {
 
         emit Stake(userAddress, amount, user.points);
 
-        return (uint128(amount), user.points);
+        return user.points;
     }
 
     /**

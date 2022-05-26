@@ -213,13 +213,12 @@ contract Series is Context, Initializable, Governable, ISeries {
             'Series: OGN transfer failed'
         );
 
-        uint128 ognStaked;
         uint128 stakePoints;
 
         // If the season is locked, we cannot stake to it
         if (!season.isLocked()) {
             sToken.mint(userAddress, amount);
-            (ognStaked, stakePoints) = season.stake(userAddress);
+            stakePoints = season.stake(userAddress, amount);
         }
         // But we may be able to pre-stake to the next season
         else {
@@ -249,10 +248,10 @@ contract Series is Context, Initializable, Governable, ISeries {
             sToken.mint(userAddress, amount);
 
             // Stake in next season
-            (ognStaked, stakePoints) = next.stake(userAddress);
+            stakePoints = next.stake(userAddress, amount);
         }
 
-        return (ognStaked, stakePoints);
+        return (sToken.balanceOf(userAddress), stakePoints);
     }
 
     /**
