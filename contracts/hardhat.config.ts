@@ -123,6 +123,14 @@ module.exports = {
       url: PROVIDER_URL,
       accounts: privateKeys.slice(0, 2)
     },
+    bsc_mainnet: {
+      url: PROVIDER_URL,
+      accounts: privateKeys.slice(0, 2)
+    },
+    bsc_testnet: {
+      url: PROVIDER_URL,
+      accounts: privateKeys.slice(0, 2)
+    },
     goerli: {
       url: PROVIDER_URL,
       accounts: privateKeys.slice(0, 2)
