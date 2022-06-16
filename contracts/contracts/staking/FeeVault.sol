@@ -1,68 +1,153 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+/*
+ * Origin Protocol
+ * https://originprotocol.com
+ *
+ * Released under the MIT license
+ * SPDX-License-Identifier: MIT
+ * https://github.com/OriginProtocol/nft-launchpad
+ *
+ * Copyright 2022 Origin Protocol, Inc
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 
-import '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
-import '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
-import {AddressUpgradeable as Address} from '@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol';
+pragma solidity ^0.8.4;
+
+import {IERC20Upgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
+import {Initializable} from '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
+import {PausableUpgradeable} from '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
+import {SafeERC20Upgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
 
 import {Governable} from '../governance/Governable.sol';
-import {ISeries} from './Series.sol';
 
 interface IFeeVault {
-    function currentSeason() external view returns (address);
-
-    function collectRewards() external;
+    function controller() external view returns (address);
 
     function pause() external;
 
     function unpause() external;
 
+    function sendETHRewards(address userAddress, uint256 amount)
+        external
+        returns (bool);
+
+    function sendTokenRewards(
+        address tokenAddress,
+        address userAddress,
+        uint256 amount
+    ) external returns (bool);
+
     function recoverERC20(
         address tokenAddress,
         uint256 tokenAmount,
         address toAddress
-    ) external;
+    ) external returns (bool);
 
-    function setSeries(address seriesAddress) external;
+    function setController(address controllerAddress) external;
 }
 
+/**
+ * @title Story FeeVault contract
+ * @notice Contract to collect NFT sales profits and rewards to be distributed
+ *      to OGN stakers.
+ */
 contract FeeVault is Initializable, Governable, PausableUpgradeable, IFeeVault {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
-    ISeries public series;
+    address public override controller;
+
+    address private constant ASSET_ETH =
+        0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     // @dev Rewards have been sent to the season
-    event RewardsCollected(uint256 amount);
+    event RewardsSent(
+        address indexed asset,
+        address indexed toAddress,
+        uint256 amount
+    );
 
-    // @dev only execute if sender is current season
-    modifier onlySeason() {
-        require(msg.sender == _currentSeason(), 'FeeVault: Invalid sender');
+    // @dev A new controller has been set
+    event NewController(address controllerAddress);
+
+    modifier onlyController() {
+        require(_msgSender() == controller, 'FeeVault: Sender not controller');
         _;
     }
 
     /**
-     * @param seriesAddress - Address for the Series
+     * @param controllerAddress - Address for the account that will receive the
+     *      rewards
      */
-    function initialize(address seriesAddress) external initializer {
+    function initialize(address controllerAddress) external initializer {
         __Pausable_init();
-        series = ISeries(seriesAddress);
+        // controller will probably be zero on initial deploy
+        controller = controllerAddress;
     }
 
     ///
     /// Externals
     ///
 
-    function currentSeason() external view override returns (address) {
-        return _currentSeason();
+    /**
+     * @dev Send ETH rewards to a user. Can only be called by controller.
+     * @param userAddress - address of the recipient of the ETH
+     * @param amount - amount of ETH (in wei)
+     */
+    function sendETHRewards(address userAddress, uint256 amount)
+        external
+        override
+        whenNotPaused
+        onlyController
+        returns (bool)
+    {
+        require(userAddress != address(0), 'FeeVault: ETH to black hole');
+        require(amount > 0, 'FeeVault: Attempt to send 0 ETH');
+
+        emit RewardsSent(ASSET_ETH, userAddress, amount);
+
+        // transfer() does not send enough gas for a delegate call to an
+        // empty receive() function.
+        (bool success, ) = userAddress.call{value: amount, gas: 2800}('');
+
+        // To align behavior with sendTokenRewards
+        require(success, 'FeeVault: ETH transfer failed');
+
+        return success;
     }
 
     /**
-     * @notice Send rewards to season contract to be claimed
-     * @dev Anyone can call this at any time (when not paused)
+     * @dev Send token rewards to a user. Can only be called by controller.
+     * @param tokenAddress - address of the token to recover
+     * @param userAddress - address of the recipient of the tokens
+     * @param amount - amount of the token to send
      */
-    function collectRewards() external override whenNotPaused {
-        _collectRewards();
+    function sendTokenRewards(
+        address tokenAddress,
+        address userAddress,
+        uint256 amount
+    ) external override whenNotPaused onlyController returns (bool) {
+        require(userAddress != address(0), 'FeeVault: Token to black hole');
+        require(amount > 0, 'FeeVault: Attempt to send 0');
+
+        emit RewardsSent(tokenAddress, userAddress, amount);
+
+        return _sendTokens(tokenAddress, userAddress, amount);
     }
 
     /**
@@ -76,15 +161,20 @@ contract FeeVault is Initializable, Governable, PausableUpgradeable, IFeeVault {
         address tokenAddress,
         uint256 tokenAmount,
         address toAddress
-    ) external override onlyGovernor whenNotPaused {
-        IERC20Upgradeable(tokenAddress).safeTransfer(toAddress, tokenAmount);
+    ) external override onlyGovernor whenNotPaused returns (bool) {
+        return _sendTokens(tokenAddress, toAddress, tokenAmount);
     }
 
     /**
      * @notice Set series address
      */
-    function setSeries(address seriesAddress) external override onlyGovernor {
-        series = ISeries(seriesAddress);
+    function setController(address controllerAddress)
+        external
+        override
+        onlyGovernor
+    {
+        emit NewController(controllerAddress);
+        controller = controllerAddress;
     }
 
     /**
@@ -108,28 +198,12 @@ contract FeeVault is Initializable, Governable, PausableUpgradeable, IFeeVault {
     /// Internals
     ///
 
-    /**
-     * @dev Get the current series
-     */
-    function _currentSeason() internal view returns (address) {
-        return
-            address(series) == address(0) ? address(0) : series.currentSeason();
-    }
-
-    /**
-     * @dev Collect rewards to the active season
-     */
-    function _collectRewards() internal {
-        require(_currentSeason() != address(0), 'FeeVault: No active season');
-
-        uint256 balance = address(this).balance;
-
-        if (balance > 0) {
-            emit RewardsCollected(balance);
-
-            // Send all ETH to season
-            // slither-disable-next-line arbitrary-send
-            payable(_currentSeason()).transfer(balance);
-        }
+    function _sendTokens(
+        address tokenAddress,
+        address toAddress,
+        uint256 amount
+    ) internal returns (bool) {
+        IERC20Upgradeable(tokenAddress).safeTransfer(toAddress, amount);
+        return true;
     }
 }

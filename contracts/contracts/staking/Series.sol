@@ -1,34 +1,57 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+/*
+ * Origin Protocol
+ * https://originprotocol.com
+ *
+ * Released under the MIT license
+ * SPDX-License-Identifier: MIT
+ * https://github.com/OriginProtocol/nft-launchpad
+ *
+ * Copyright 2022 Origin Protocol, Inc
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+pragma solidity ^0.8.4;
 
 import {AddressUpgradeable as Address} from '@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol';
-import {Context} from '@openzeppelin/contracts/utils/Context.sol';
 import {Initializable} from '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
 import {IERC20Upgradeable as IERC20} from '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
 
 import {Governable} from '../governance/Governable.sol';
 import {IFeeVault} from './FeeVault.sol';
 import {ISeason} from './ISeason.sol';
-import {IStOGN} from './StOGN.sol';
 
 interface ISeries {
     function ogn() external view returns (address);
 
-    function stOGN() external view returns (address);
-
     function vault() external view returns (address);
 
-    function hasActiveSeason() external view returns (bool);
-
-    function currentSeason() external view returns (address);
-
-    function nextSeason() external view returns (address);
-
-    function previousSeason() external view returns (address);
-
-    function claimRewards(address userAddress)
+    function latestStakeTime(address userAddress)
         external
-        returns (uint256, uint256);
+        view
+        returns (uint256);
+
+    function balanceOf(address userAddress) external view returns (uint256);
+
+    function totalSupply() external view returns (uint256);
+
+    function claim(address userAddress) external returns (uint256, uint256);
 
     function stake(uint256 amount) external returns (uint256, uint256);
 
@@ -39,15 +62,22 @@ interface ISeries {
     function pushSeason(address season) external;
 }
 
-contract Series is Context, Initializable, Governable, ISeries {
+/**
+ * @title Story Series staking contract
+ * @notice Primary interaction OGN staking contract for Story profit sharing
+ *      and rewards.
+ */
+contract Series is Initializable, Governable, ISeries {
     address public override vault;
     address public override ogn;
-    address public override stOGN;
 
     address[] public seasons;
-    uint256 public activeSeason;
+    uint256 public currentStakingIndex;
+    uint256 public currentClaimingIndex;
+    uint256 public totalStakedOGN;
 
-    bytes32 public constant MINTER_ROLE = keccak256('MINTER_ROLE');
+    mapping(address => uint256) private stakedOGN;
+    mapping(address => uint256) private userLastStakingTime;
 
     /**
      * @dev A new season has been registered
@@ -64,47 +94,25 @@ contract Series is Context, Initializable, Governable, ISeries {
     event SeasonStart(uint256 indexed number, address indexed season);
 
     /**
-     * @dev A season has ended
-     * @param number - The season ID (1-indexed)
-     * @param season - The address of the new season
-     */
-    event SeasonFinale(uint256 indexed number, address indexed season);
-
-    /**
      * @dev A season has been cancelled and removed
      * @param season - The address of the new season
      */
     event SeasonCancelled(address indexed season);
 
-    // @dev only execute if contract is fully setup
-    modifier addressesSet() {
-        require(stOGN != address(0), 'Series: stOGN not set');
-        require(vault != address(0), 'Series: vault not set');
-        _;
-    }
-
     // @dev only execute if there's an active season set
     modifier requireActiveSeason() {
-        require(_hasActiveSeason(), 'Series: No active season');
+        require(seasons.length > 0, 'Series: No active season');
         _;
     }
 
     /**
      * @param ogn_ - Address for the OGN token
-     * @param stOGN_ - Address for the stOGN token
      * @param vault_ - Address for the FeeVault
      */
-    function initialize(
-        address ogn_,
-        address stOGN_,
-        address vault_
-    ) external initializer {
+    function initialize(address ogn_, address vault_) external initializer {
         require(ogn_ != address(0), 'Series: Zero address: OGN');
+        require(vault_ != address(0), 'Series: Zero address: Vault');
         ogn = ogn_;
-
-        // These are likely to be zero on initial deploy due to dependency
-        // ordering.
-        stOGN = stOGN_;
         vault = vault_;
     }
 
@@ -113,38 +121,39 @@ contract Series is Context, Initializable, Governable, ISeries {
     ///
 
     /**
-     * @notice Is there a season that is currently active?
-     * @return true if yes
+     * @notice Get the latest stake block timestamp for a user
+     * @param userAddress - address for which to return their last stake time
+     * @return timestamp for last stake time for a user (or 0 if none)
      */
-    function hasActiveSeason() external view override returns (bool) {
-        return _hasActiveSeason();
+    function latestStakeTime(address userAddress)
+        external
+        view
+        override
+        returns (uint256)
+    {
+        return userLastStakingTime[userAddress];
     }
 
     /**
-     * @notice The current active season (zero address if none)
-     * @return address of the currently set active season (or zero address)
+     * @notice Total staked OGN for a user
+     * @param userAddress - address for which to return their points
+     * @return total OGN staked
      */
-    function currentSeason() public view override returns (address) {
-        return seasons.length > 0 ? seasons[activeSeason] : address(0);
+    function balanceOf(address userAddress)
+        external
+        view
+        override
+        returns (uint256)
+    {
+        return stakedOGN[userAddress];
     }
 
     /**
-     * @notice The next scheduled season (zero address if none)
-     * @return address of the next consecutive season (or zero address)
+     * @notice Total staked OGN of all users
+     * @return total OGN staked from all users
      */
-    function nextSeason() public view override returns (address) {
-        return
-            activeSeason < seasons.length - 1
-                ? seasons[activeSeason + 1]
-                : address(0);
-    }
-
-    /**
-     * @notice The next scheduled season (zero address if none)
-     * @return address of the previous season (or zero address)
-     */
-    function previousSeason() public view override returns (address) {
-        return activeSeason > 0 ? seasons[activeSeason - 1] : address(0);
+    function totalSupply() external view override returns (uint256) {
+        return totalStakedOGN;
     }
 
     /**
@@ -155,16 +164,6 @@ contract Series is Context, Initializable, Governable, ISeries {
     function setOGN(address ogn_) external onlyGovernor {
         require(ogn_ != address(0), 'Series: Zero address: OGN');
         ogn = ogn_;
-    }
-
-    /**
-     * @notice Set the address for the stOGN token.
-     * @dev other contracts reference this value as well
-     * @param stOGN_ - address for the contract
-     */
-    function setStOGN(address stOGN_) external onlyGovernor {
-        require(stOGN_ != address(0), 'Series: Zero address: stOGN');
-        stOGN = stOGN_;
     }
 
     /**
@@ -179,40 +178,34 @@ contract Series is Context, Initializable, Governable, ISeries {
 
     /**
      * @notice Stake OGN for fee sharing and rewards. Users can call this
-     *      multiple times to add to their stake.
+     *      multiple times to add to their stake. This contract must be
+     *      approved to transfer the given amount of OGN from the user.
      *
      * @param amount - The amount of OGN to stake
      * @return total amount of OGN staked by the user
-     * @return total points received for the user's stake
+     * @return total points received for the user's entire stake for the
+     *      staking season
      */
     function stake(uint256 amount)
         external
         override
-        addressesSet
         requireActiveSeason
         returns (uint256, uint256)
     {
         require(amount > 0, 'Series: No stake amount');
 
-        address userAddress = _msgSender();
+        uint128 stakePoints;
+        address userAddress = msg.sender;
         IERC20 token = IERC20(ogn);
-        IStOGN sToken = IStOGN(stOGN);
-        ISeason season = _acquireSeason(userAddress);
+        ISeason season = _acquireStakingSeason();
 
-        // OGN approval maintenance, likely only once
-        if (token.allowance(address(this), address(stOGN)) < amount) {
-            require(
-                token.approve(address(stOGN), type(uint256).max),
-                'Series: OGN approval failed'
-            );
-        }
-
-        // Transfer OGN to Series and mint stOGN for the user
+        // Transfer OGN to Series
         require(
             token.transferFrom(userAddress, address(this), amount),
             'Series: OGN transfer failed'
         );
 
+<<<<<<< Updated upstream
         uint128 ognStaked;
         uint128 stakePoints;
 
@@ -253,144 +246,137 @@ contract Series is Context, Initializable, Governable, ISeries {
         }
 
         return (ognStaked, stakePoints);
+=======
+        // Record stake for the user and get their points total for return
+        stakePoints = season.stake(userAddress, amount);
+
+        // Update balances. This must occur after the stake() call to allow
+        // for clean rollover.  Otherwise, this new balance could be
+        // considered historical and used as rollover on top of new amount.
+        stakedOGN[userAddress] += amount;
+        totalStakedOGN += amount;
+        userLastStakingTime[userAddress] = block.timestamp;
+
+        return (stakedOGN[userAddress], stakePoints);
+>>>>>>> Stashed changes
     }
 
     /**
      * @notice Unstake previously staked OGN. This will unstake their full
-     *      OGN stake amount.
+     *      OGN stake amount and pay out any rewards (if within a claim period)
      *
      * @return amount of OGN unstaked
      */
-    function unstake()
-        external
-        override
-        addressesSet
-        requireActiveSeason
-        returns (uint256)
-    {
-        address userAddress = _msgSender();
-        IStOGN sToken = IStOGN(stOGN);
-        ISeason season = _acquireSeason(userAddress);
+    function unstake() external override requireActiveSeason returns (uint256) {
+        address userAddress = msg.sender;
+        uint256 amount = stakedOGN[userAddress];
+        ISeason claimSeason = _acquireClaimingSeason();
 
-        uint256 amount = sToken.balanceOf(userAddress);
+        (uint256 rewardETH, uint256 rewardOGN) = claimSeason.unstake(
+            userAddress
+        );
 
-        // All potentially in-play seasons. The potential states being:
-        // locked, active, pre-stake.  Though never all at once.
-        address[3] memory relevant = [
-            previousSeason(),
-            address(season),
-            nextSeason()
-        ];
-
-        // Unstake from all potentially relevant seasons
-        for (uint256 i = 0; i < relevant.length; i++) {
-            if (relevant[i] != address(0)) {
-                ISeason relevantSeason = ISeason(relevant[i]);
-
-                // _acquireSeason() would have called this for the active
-                if (relevant[i] != address(season)) {
-                    relevantSeason.before(userAddress);
-                }
-
-                if (relevantSeason.isClaimPeriod()) {
-                    // slither-disable-next-line unused-return
-                    relevantSeason.claimRewards(userAddress);
-                }
-
-                if (
-                    !relevantSeason.isEnded() &&
-                    relevantSeason.getPoints(userAddress) > 0
-                ) {
-                    relevantSeason.unstake(userAddress);
-                }
-            }
+        // Make sure to unstake from staking season as well to zero-out user
+        if (currentClaimingIndex < currentStakingIndex) {
+            ISeason stakeSeason = ISeason(seasons[currentStakingIndex]);
+            // Ignored return val because there can't be multiple seasons in
+            // claim period at one time.  This should return (0,0).
+            stakeSeason.unstake(userAddress);
         }
 
-        // Burn stOGN, which sends staked OGN to the user
-        sToken.burnTo(userAddress, userAddress, amount);
+        // Balance updates need to happen after unstake() calls to allow
+        // rollover calculation to get a user's stake balance.
+        stakedOGN[userAddress] = 0;
+        totalStakedOGN -= amount;
+
+        // Send rewards to user (if any)
+        _transferRewards(userAddress, rewardETH, rewardOGN);
+
+        // Send staked OGN back to user
+        require(
+            IERC20(ogn).transfer(userAddress, amount),
+            'Series: OGN transfer failed'
+        );
 
         return amount;
     }
 
-    function claimRewards(address userAddress)
+    /**
+     * @notice Claim profit share and OGN rewards for a user.
+     *
+     * @param userAddress - address of the staked user to claim rewards for
+     * @return claimedETH - amount of ETH profit share claimed
+     * @return claimedOGN - amount of OGN rewards claimed
+     */
+    function claim(address userAddress)
         external
         override
-        addressesSet
         requireActiveSeason
         returns (uint256, uint256)
     {
-        ISeason season = _acquireSeason(userAddress);
+        ISeason season = _acquireClaimingSeason();
 
-        uint256 claimedETH = 0;
-        uint256 claimedOGN = 0;
+        (uint256 rewardETH, uint256 rewardOGN) = season.claim(userAddress);
 
-        // Likely only the last season is in claim period, but a chance we
-        // let the series end (or start next delayed) so this season may be
-        // the one in claim period.
-        address[2] memory relevant = [previousSeason(), address(season)];
+        _transferRewards(userAddress, rewardETH, rewardOGN);
 
-        for (uint256 i = 0; i < relevant.length; i++) {
-            if (relevant[i] != address(0)) {
-                ISeason relevantSeason = ISeason(relevant[i]);
-
-                // _acquireSeason() would have called this for the active
-                if (relevant[i] != address(season)) {
-                    relevantSeason.before(userAddress);
-                }
-
-                if (relevantSeason.isClaimPeriod()) {
-                    (uint256 _eth, uint256 _ogn) = relevantSeason.claimRewards(
-                        userAddress
-                    );
-                    claimedETH += _eth;
-                    claimedOGN += _ogn;
-                }
-            }
-        }
-
-        return (claimedETH, claimedOGN);
+        return (rewardETH, rewardOGN);
     }
 
     /**
-     * @notice Start the next season.
-     * @dev This should be a pretty exceptional call to make and should not be
-     *      part of the normal lifecycle
-     */
-    function seasonStart() external onlyGovernor {
-        _startNext();
-
-        emit SeasonStart(activeSeason, currentSeason());
-    }
-
-    /**
-     * @notice Add a new season.  It will be the "next" season
+     * @notice Add a new season.  It will be the last season in the sequence.
+     *
      * @param season - address for the new season
      */
     function pushSeason(address season) external override onlyGovernor {
         require(Address.isContract(season), 'Series: Season not a contract');
+
+        ISeason newSeason = ISeason(season);
+
+        // If we have seasons to compare, do some sanity checks
+        if (seasons.length > 0) {
+            ISeason prevSeason = ISeason(seasons[seasons.length - 1]);
+
+            // End time must be after claim period to prevent overlap of claim
+            // periods
+            require(
+                newSeason.endTime() > prevSeason.claimEndTime(),
+                'Series: Invalid end time'
+            );
+
+            // It's critical the start time begins after the previous season's
+            // lock start time to avoid advancing early into the staking slot.
+            // Since its end time is after the lock start time and seasons
+            // probably shouldn't overlap for clarity sake, we check against
+            // end time.
+            require(
+                newSeason.startTime() >= prevSeason.endTime(),
+                'Series: Invalid start time'
+            );
+        }
 
         seasons.push(season);
 
         emit NewSeason(seasons.length - 1, season);
 
         if (seasons.length == 1) {
-            emit SeasonStart(activeSeason, season);
+            ISeason(season).bootstrap(totalStakedOGN);
+            emit SeasonStart(0, season);
         }
     }
 
     /**
-     * @notice Cancel the final scheduled season.
+     * @notice Remove the final scheduled season if it is not an active
+     *      staking season.
      */
-    function popSeason() external override onlyGovernor requireActiveSeason {
-        uint256 finalSeason = seasons.length - 1;
-
+    function popSeason() external override onlyGovernor {
         require(seasons.length > 0, 'Series: No seasons to cancel');
         require(
-            activeSeason < seasons.length - 1,
-            'Series: Cannot cancel active season'
+            currentStakingIndex < seasons.length - 1,
+            'Series: Season is active'
         );
 
-        address cancelled = seasons[finalSeason];
+        address cancelled = seasons[seasons.length - 1];
 
         // Remove the last element
         seasons.pop();
@@ -403,65 +389,68 @@ contract Series is Context, Initializable, Governable, ISeries {
     ///
 
     /**
-     * @dev Do we have an active season that can be staked in?
-     * @return true if yes
+     * @dev Return the season to use for staking, advancing if necessary
+     * @return staking season
      */
-    function _hasActiveSeason() internal view returns (bool) {
-        return seasons.length > 0 && currentSeason() != address(0);
-    }
+    function _acquireStakingSeason() internal returns (ISeason) {
+        ISeason season = ISeason(seasons[currentStakingIndex]);
 
-    /**
-     * @dev called by the current season to indicate it has ended. This will
-     *      also kick off the next season if it exists.
-     */
-    function _seasonFinale() internal {
-        // Collect rewards to Season
-        IFeeVault(vault).collectRewards();
-
-        emit SeasonFinale(activeSeason, currentSeason());
-
-        // If we let the finale happen without a next season ready to go, the
-        // governor will need to add a new season newSeason(), and call
-        // seasonStart() to kick off the next manually.
-        if (nextSeason() != address(0)) {
-            _startNext();
-
-            emit SeasonStart(activeSeason, currentSeason());
+        // Locked seasons can accept stakes but will not award points,
+        // therefore the staker will receive no rewards.  If we have another
+        // Season available for (pre)staking, advance the index and use that
+        // for staking operations.
+        if (
+            block.timestamp >= season.lockStartTime() &&
+            seasons.length > currentStakingIndex + 1
+        ) {
+            currentStakingIndex += 1;
+            season = ISeason(seasons[currentStakingIndex]);
+            season.bootstrap(totalStakedOGN);
+            emit SeasonStart(currentStakingIndex, seasons[currentStakingIndex]);
         }
-    }
-
-    /**
-     * @dev Fetches the active season, calling before() on each, which
-     *      potentially causes a finale and new season start.
-     * @param userAddress - address for the user we're operating on
-     * @return season instance for the active season
-     */
-    function _acquireSeason(address userAddress) internal returns (ISeason) {
-        ISeason season = ISeason(currentSeason());
-        uint256 initial = activeSeason;
-
-        if (season.isEnded()) {
-            _seasonFinale();
-
-            // _seasonFinale() may have started the next season
-            if (activeSeason != initial) {
-                season = ISeason(currentSeason());
-            }
-        }
-
-        season.before(userAddress);
 
         return season;
     }
 
     /**
-     * @dev Start the next season.  This will fail if there's no next season.
+     * @dev Return the season to use for claiming, advancing if necessary
+     * @return claiming season
      */
-    function _startNext() internal {
-        require(
-            activeSeason < seasons.length - 1,
-            'Series: No next season set'
-        );
-        activeSeason += 1;
+    function _acquireClaimingSeason() internal returns (ISeason) {
+        ISeason season = ISeason(seasons[currentClaimingIndex]);
+
+        // If the claim period has ended, advance to the next season, if
+        // available.
+        if (
+            block.timestamp >= season.claimEndTime() &&
+            seasons.length > currentClaimingIndex + 1
+        ) {
+            currentClaimingIndex += 1;
+            season = ISeason(seasons[currentClaimingIndex]);
+        }
+
+        return season;
+    }
+
+    /**
+     * @dev Transfer the given ETH and OGN to the given user from the vault
+     * @param userAddress - Recipient of the rewards
+     * @param rewardETH - Amount of ETH to transfer
+     * @param rewardOGN - Amount of OGN to transfer
+     */
+    function _transferRewards(
+        address userAddress,
+        uint256 rewardETH,
+        uint256 rewardOGN
+    ) internal {
+        IFeeVault rewards = IFeeVault(vault);
+
+        if (rewardETH > 0) {
+            rewards.sendETHRewards(userAddress, rewardETH);
+        }
+
+        if (rewardOGN > 0) {
+            rewards.sendTokenRewards(ogn, userAddress, rewardOGN);
+        }
     }
 }

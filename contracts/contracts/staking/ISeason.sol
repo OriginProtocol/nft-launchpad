@@ -1,10 +1,38 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+/*
+ * Origin Protocol
+ * https://originprotocol.com
+ *
+ * Released under the MIT license
+ * SPDX-License-Identifier: MIT
+ * https://github.com/OriginProtocol/nft-launchpad
+ *
+ * Copyright 2022 Origin Protocol, Inc
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+pragma solidity ^0.8.4;
 
 interface ISeason {
-    function claimPeriod() external view returns (uint256);
+    function claimEndTime() external view returns (uint256);
 
-    function lockPeriod() external view returns (uint256);
+    function lockStartTime() external view returns (uint256);
 
     function endTime() external view returns (uint256);
 
@@ -19,6 +47,7 @@ interface ISeason {
         view
         returns (uint256, uint256);
 
+<<<<<<< Updated upstream
     function isLocked() external view returns (bool);
 
     function isEnded() external view returns (bool);
@@ -26,14 +55,18 @@ interface ISeason {
     function isClaimPeriod() external view returns (bool);
 
     function before(address userAddress) external;
-
-    function claimRewards(address userAddress)
+=======
+    function pointsInTime(uint256 amount, uint256 blockStamp)
         external
-        returns (uint256, uint256);
+        view
+        returns (uint128);
+>>>>>>> Stashed changes
+
+    function claim(address userAddress) external returns (uint256, uint256);
 
     function stake(address userAddress) external returns (uint128, uint128);
 
-    function unstake(address userAddress) external;
+    function unstake(address userAddress) external returns (uint256, uint256);
 
-    function wrapUp() external;
+    function bootstrap(uint256 initialSupply) external;
 }

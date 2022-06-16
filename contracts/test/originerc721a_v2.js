@@ -1,4 +1,4 @@
-import { loadFixture } from './helpers'
+import { funcSig, loadFixture } from './helpers'
 import { defaultFixture } from './_fixture'
 import { expect } from 'chai'
 import { getMintSignature } from 'common/src/getMintSignature'
@@ -353,7 +353,3 @@ describe('OriginERC721a_v2', () => {
     })
   })
 })
-
-async function funcSig(sig) {
-  return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(sig)).slice(0, 10)
-}

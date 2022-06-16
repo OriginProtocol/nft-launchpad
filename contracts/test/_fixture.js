@@ -1,13 +1,11 @@
 const hre = require('hardhat')
 
-const { MINTER_ROLE, MINTER_ADMIN_ROLE } = require('./staking/_const')
-
 const { blockStamp, expectSuccess, ONE_THOUSAND_OGN } = require('./helpers')
 
 async function defaultFixture() {
   await deployments.fixture()
 
-  const { deployerAddr, signerAddr, masterAddr } = await getNamedAccounts()
+  const { deployerAddr, masterAddr } = await getNamedAccounts()
 
   const MockDAI = await ethers.getContract('MockDAI')
   const MockOUSD = await ethers.getContract('MockOUSD')
@@ -50,6 +48,20 @@ async function defaultFixture() {
       masterAddr,
       [masterAddr],
       [1]
+    ]
+  })
+
+  await deployments.deploy('OriginERC721a_v3', {
+    from: deployerAddr,
+    args: [
+      'Sevent Twenty One Ay',
+      '721A',
+      'https://nft.origin.eth/nft/721a/',
+      10,
+      masterAddr,
+      [masterAddr],
+      [1],
+      1000 // 10% royalty
     ]
   })
 
@@ -103,6 +115,7 @@ async function defaultFixture() {
   const nftv3 = await ethers.getContract('OriginERC721_v3')
   const nftv5 = await ethers.getContract('OriginERC721_v5')
   const nft721a_v2 = await ethers.getContract('OriginERC721a_v2')
+  const nft721a_v3 = await ethers.getContract('OriginERC721a_v3')
   const factory = await ethers.getContract('OriginERC721_v3Factory')
   const factoryV5 = await ethers.getContract('OriginERC721_v5Factory')
   const polygonV3 = await ethers.getContract('OriginPolygonERC721_v3')
@@ -144,6 +157,7 @@ async function defaultFixture() {
     nftv3,
     nftv5,
     nft721a_v2,
+    nft721a_v3,
     factory,
     factoryV5,
     polygonV3,
@@ -166,9 +180,6 @@ async function stakingFixture() {
 
   const seriesProxy = await ethers.getContract('SeriesProxy')
   const series = await ethers.getContractAt('Series', seriesProxy.address)
-
-  const stOGNProxy = await ethers.getContract('StOGNProxy')
-  const stOGN = await ethers.getContractAt('StOGN', stOGNProxy.address)
 
   const feeVaultProxy = await ethers.getContract('FeeVaultProxy')
   const feeVault = await ethers.getContractAt('FeeVault', feeVaultProxy.address)
@@ -199,11 +210,8 @@ async function stakingFixture() {
     await allowOGN(user.signer, series.address, amount)
     await expectSuccess(series.connect(user.signer).stake(amount))
     user.timestamp = await blockStamp()
-    const endTime = await seasonOne.endTime()
-    const lockPeriod = await seasonOne.lockPeriod()
-    const season = endTime.sub(lockPeriod).gt(user.timestamp)
-      ? seasonOne
-      : seasonTwo
+    const lockStartTime = await seasonOne.lockStartTime()
+    const season = lockStartTime.gt(user.timestamp) ? seasonOne : seasonTwo
     user.points = await season.getPoints(user.address)
   }
 
@@ -224,7 +232,6 @@ async function stakingFixture() {
     seasonTwo,
     mockOGN,
     series,
-    stOGN,
     userStake,
     createUser,
     allowOGN,

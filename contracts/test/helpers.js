@@ -71,6 +71,10 @@ const expectSuccess = async (tx, confirms = 1) => {
 }
 
 function toHexString(num) {
+  if (num instanceof ethers.BigNumber) {
+    return num.toHexString()
+  }
+
   return `0x${num.toString(16)}`
 }
 
@@ -91,11 +95,12 @@ async function rollback(snapshotId) {
 }
 
 async function mineBlocks(numBlocks) {
-  // args are blocks and time between blocks in seconds
-  await hre.network.provider.send('hardhat_mine', [
-    toHexString(numBlocks),
-    '0x1'
-  ])
+  // Sadly, we are unable to use hardhat_mine because it does not currently
+  // work with solidity-coverage.
+  // Ref: https://github.com/sc-forks/solidity-coverage/issues/707
+  for (let i = 0; i < numBlocks; i++) {
+    await hre.network.provider.send('evm_mine', [])
+  }
 }
 
 async function mineUntilBlock(untilBlock) {
@@ -112,13 +117,11 @@ async function mineUntilTime(untilTimestamp) {
     throw new Error(`Cannot mine into the past.`)
   }
 
-  const span = diff > 10 ? Math.ceil(diff / 10) : diff
-  const blocks = diff > 10 ? 10 : 1
+  // bumps the internal timestamp of the node but does not mine blocks
+  await hre.network.provider.send('evm_increaseTime', [toHexString(diff)])
 
-  await hre.network.provider.send('hardhat_mine', [
-    toHexString(blocks + 1),
-    toHexString(span)
-  ])
+  // evm_increaseTime does not actually mine anything
+  await mineBlocks(1)
 }
 
 async function blockStamp(number) {
@@ -154,6 +157,9 @@ function randomAddress() {
   )
 }
 
+const ONE_DAY = 60 * 60 * 24
+const ONE_HUNDRED_TWENTY_DAYS = ONE_DAY * 120
+
 const ONE_ETH = ethers.utils.parseEther('1')
 const ONE_OGN = ONE_ETH
 const ONE_THOUSAND_OGN = ONE_OGN.mul(1000)
@@ -166,18 +172,38 @@ function roughlyEqual(a, b) {
   return diff.lt(DUST)
 }
 
+function funcSig(sig) {
+  return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(sig)).slice(0, 10)
+}
+
+function getInterfaceID(selectors) {
+  let interfaceID = ethers.BigNumber.from(0)
+  for (let selector of selectors) {
+    if (!(selector instanceof ethers.BigNumber)) {
+      selector = ethers.BigNumber.from(selector)
+    }
+    interfaceID = interfaceID.xor(selector)
+  }
+  return interfaceID
+}
+
 module.exports = {
   BURN_ADDRESS,
+  DUST,
   ONE_ETH,
   ONE_OGN,
   ONE_THOUSAND_OGN,
+  ONE_DAY,
+  ONE_HUNDRED_TWENTY_DAYS,
   ZERO_ADDRESS,
   allowToken,
   blockStamp,
   createUser,
   expectSuccess,
+  funcSig,
   fundToken,
   getGas,
+  getInterfaceID,
   loadFixture,
   getSigForMintV5,
   mineBlocks,

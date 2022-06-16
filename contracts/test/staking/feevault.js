@@ -1,8 +1,10 @@
 const { expect } = require('chai')
 
+const { deployWithConfirmation } = require('../../utils/deploy')
 const { stakingFixture } = require('../_fixture')
 const {
   ONE_ETH,
+  ONE_OGN,
   ONE_THOUSAND_OGN,
   ZERO_ADDRESS,
   expectSuccess,
@@ -13,7 +15,8 @@ const {
 } = require('../helpers')
 
 describe('FeeVault', () => {
-  let collectedRewards = ethers.BigNumber.from(0),
+  let collectedETHRewards = ethers.BigNumber.from(0),
+    collectedOGNRewards = ethers.BigNumber.from(0),
     fixture,
     snapshotID,
     users = {
@@ -40,22 +43,28 @@ describe('FeeVault', () => {
     const deployerAddress = await fixture.deployer.getAddress()
     expect(await fixture.feeVaultProxy.governor()).to.equal(deployerAddress)
     expect(await fixture.feeVault.governor()).to.equal(deployerAddress)
-    expect(await fixture.feeVault.currentSeason()).to.equal(
-      fixture.seasonOne.address
-    )
+    expect(await fixture.feeVault.controller()).to.equal(fixture.series.address)
     await expect(fixture.feeVault.initialize(ZERO_ADDRESS)).to.be.revertedWith(
       'Initializable: contract is already initialized'
     )
   })
 
-  it('knows the current season', async function () {
-    expect(await fixture.feeVault.currentSeason()).to.equal(
-      fixture.seasonOne.address
-    )
+  it('knows the current controller', async function () {
+    expect(await fixture.feeVault.controller()).to.equal(fixture.series.address)
   })
 
-  it('allows rewards to be collected', async function () {
+  it('governor can chance controller', async function () {
+    await expectSuccess(
+      fixture.feeVault
+        .connect(fixture.deployer)
+        .setController(users.charlie.address)
+    )
+    expect(await fixture.feeVault.controller()).to.equal(users.charlie.address)
+  })
+
+  it('allows rewards to be sent', async function () {
     const royalty = ONE_ETH.mul(5)
+    const bobsOriginalBalance = await users.bob.signer.getBalance()
     expect(await ethers.provider.getBalance(fixture.feeVault.address)).to.equal(
       0
     )
@@ -67,44 +76,74 @@ describe('FeeVault', () => {
         value: royalty
       })
     )
+    await fixture.fundOGN(fixture.feeVault.address, ONE_THOUSAND_OGN)
 
     expect(await ethers.provider.getBalance(fixture.feeVault.address)).to.equal(
       royalty
     )
+    expect(await fixture.mockOGN.balanceOf(fixture.feeVault.address)).to.equal(
+      ONE_THOUSAND_OGN
+    )
 
-    // Anyone can call collectRewards()
-    const receipt = await expectSuccess(
-      fixture.feeVault.connect(fixture.nobody).collectRewards()
+    // Allows controller to send rewards
+    const receiptETH = await expectSuccess(
+      fixture.feeVault
+        .connect(users.charlie.signer)
+        .sendETHRewards(users.bob.address, royalty)
     )
-    const collectedEv = receipt.events.filter(
-      (ev) => ev.event === 'RewardsCollected'
+    const collectedETHEv = receiptETH.events.filter(
+      (ev) => ev.event === 'RewardsSent'
     )
-    collectedRewards = collectedRewards.add(royalty)
-    expect(collectedEv.length).to.equal(1)
-    expect(collectedEv[0].args.amount).to.equal(royalty)
+    collectedETHRewards = collectedETHRewards.add(royalty)
+    expect(collectedETHEv.length).to.equal(1)
+    expect(collectedETHEv[0].args.amount).to.equal(royalty)
 
     expect(await ethers.provider.getBalance(fixture.feeVault.address)).to.equal(
       0
     )
-    expect(
-      await ethers.provider.getBalance(fixture.seasonOne.address)
-    ).to.equal(collectedRewards)
+    expect(await ethers.provider.getBalance(users.bob.address)).to.equal(
+      bobsOriginalBalance.add(collectedETHRewards)
+    )
+
+    const receiptOGN = await expectSuccess(
+      fixture.feeVault
+        .connect(users.charlie.signer)
+        .sendTokenRewards(
+          fixture.mockOGN.address,
+          users.bob.address,
+          ONE_THOUSAND_OGN.div(2)
+        )
+    )
+    const collectedOGNEv = receiptOGN.events.filter(
+      (ev) => ev.event === 'RewardsSent'
+    )
+    collectedOGNRewards = collectedOGNRewards.add(royalty)
+    expect(collectedOGNEv.length).to.equal(1)
+    expect(collectedOGNEv[0].args.amount).to.equal(ONE_THOUSAND_OGN.div(2))
+    expect(await fixture.mockOGN.balanceOf(fixture.feeVault.address)).to.equal(
+      ONE_THOUSAND_OGN.div(2)
+    )
   })
 
   it('can recover ERC20 tokens', async function () {
     const deployerAddress = await fixture.deployer.getAddress()
-    await fixture.fundOGN(fixture.feeVault.address, ONE_THOUSAND_OGN)
+    //await fixture.fundOGN(fixture.feeVault.address, ONE_THOUSAND_OGN)
+    // Leftover rewards from previous test
     expect(await fixture.mockOGN.balanceOf(fixture.feeVault.address)).to.equal(
-      ONE_THOUSAND_OGN
+      ONE_THOUSAND_OGN.div(2)
     )
     await fixture.feeVault
       .connect(fixture.deployer)
-      .recoverERC20(fixture.mockOGN.address, ONE_THOUSAND_OGN, deployerAddress)
+      .recoverERC20(
+        fixture.mockOGN.address,
+        ONE_THOUSAND_OGN.div(2),
+        deployerAddress
+      )
     expect(await fixture.mockOGN.balanceOf(fixture.feeVault.address)).to.equal(
       0
     )
     expect(await fixture.mockOGN.balanceOf(deployerAddress)).to.equal(
-      ONE_THOUSAND_OGN
+      ONE_THOUSAND_OGN.div(2)
     )
   })
 
@@ -119,7 +158,15 @@ describe('FeeVault', () => {
     expect(await fixture.feeVault.paused()).to.be.true
 
     await expect(
-      fixture.feeVault.connect(fixture.nobody).collectRewards()
+      fixture.feeVault
+        .connect(fixture.nobody)
+        .sendETHRewards(users.diana.address, ONE_ETH)
+    ).to.be.revertedWith('Pausable: paused')
+
+    await expect(
+      fixture.feeVault
+        .connect(fixture.nobody)
+        .sendTokenRewards(fixture.mockOGN.address, users.diana.address, ONE_ETH)
     ).to.be.revertedWith('Pausable: paused')
   })
 
@@ -132,15 +179,96 @@ describe('FeeVault', () => {
     expect(await fixture.feeVault.paused()).to.be.false
   })
 
-  it('can set series address', async function () {
-    const newSeries = randomAddress()
-    expect(await fixture.feeVault.series()).to.equal(fixture.series.address)
+  it('can be deployed with a controller', async function () {
+    const controllerAddress = randomAddress()
+    await deployWithConfirmation('FeeVault')
+    const feeVaultImpl = await hre.ethers.getContract('FeeVault')
 
+    await deployWithConfirmation('FeeVaultProxy', [
+      feeVaultImpl.address,
+      controllerAddress
+    ])
+    const feeVaultProxy = await hre.ethers.getContract('FeeVaultProxy')
+    const feeVault = await hre.ethers.getContractAt(
+      'FeeVault',
+      feeVaultProxy.address
+    )
+
+    expect(await feeVault.controller()).to.equal(controllerAddress)
+  })
+
+  it('does not allow randos to send rewards', async function () {
     await expect(
-      fixture.feeVault.connect(fixture.nobody).setSeries(newSeries)
-    ).to.be.revertedWith('Caller is not the Governor')
-    await fixture.feeVault.connect(fixture.deployer).setSeries(newSeries)
+      fixture.feeVault
+        .connect(fixture.nobody)
+        .sendETHRewards(randomAddress(), ONE_ETH)
+    ).to.be.revertedWith('FeeVault: Sender not controller')
+    await expect(
+      fixture.feeVault
+        .connect(fixture.nobody)
+        .sendTokenRewards(
+          '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+          randomAddress(),
+          ONE_ETH
+        )
+    ).to.be.revertedWith('FeeVault: Sender not controller')
+  })
 
-    expect(await fixture.feeVault.series()).to.equal(newSeries)
+  it('does not allow controller to burn ETH', async function () {
+    await expectSuccess(
+      fixture.feeVault.setController(await fixture.master.getAddress())
+    )
+    await expect(
+      fixture.feeVault
+        .connect(fixture.master)
+        .sendETHRewards(ZERO_ADDRESS, ONE_ETH)
+    ).to.be.revertedWith('FeeVault: ETH to black hole')
+  })
+
+  it('does not allow controller to send 0 ETH', async function () {
+    await expectSuccess(
+      fixture.feeVault.setController(await fixture.master.getAddress())
+    )
+    await expect(
+      fixture.feeVault
+        .connect(fixture.master)
+        .sendETHRewards(randomAddress(), 0)
+    ).to.be.revertedWith('FeeVault: Attempt to send 0 ETH')
+  })
+
+  it('reverts on ETH send failure', async function () {
+    await deployWithConfirmation('ReceiveFail', [])
+    const testReceive = await hre.ethers.getContract('ReceiveFail')
+
+    await expectSuccess(
+      fixture.feeVault.setController(await fixture.master.getAddress())
+    )
+    await expect(
+      fixture.feeVault
+        .connect(fixture.master)
+        .sendETHRewards(testReceive.address, 1)
+    ).to.be.revertedWith('FeeVault: ETH transfer failed')
+  })
+
+  it('does not allow controller to burn OGN', async function () {
+    await expectSuccess(
+      fixture.feeVault.setController(await fixture.master.getAddress())
+    )
+    await expect(
+      fixture.feeVault
+        .connect(fixture.master)
+        .sendTokenRewards(fixture.mockOGN.address, ZERO_ADDRESS, ONE_OGN)
+    ).to.be.revertedWith('FeeVault: Token to black hole')
+  })
+
+  it('does not allow controller to send 0 OGN', async function () {
+    await expectSuccess(
+      fixture.feeVault.setController(await fixture.master.getAddress())
+    )
+    await expect(
+      fixture.feeVault
+        .connect(fixture.master)
+        .sendTokenRewards(fixture.mockOGN.address, randomAddress(), 0)
+    ).to.be.revertedWith('FeeVault: Attempt to send 0')
   })
 })

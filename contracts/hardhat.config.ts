@@ -14,6 +14,8 @@ const {
 
 import 'hardhat-deploy'
 import 'hardhat-deploy-ethers'
+import 'hardhat-gas-reporter'
+import 'solidity-coverage'
 import { task } from 'hardhat/config'
 import { BuildInfo } from 'hardhat/types'
 import { CompilerOutput } from 'hardhat/src/types/artifacts'
@@ -107,7 +109,7 @@ module.exports = {
         mnemonic,
         count: 200
       },
-      hardfork: 'london',
+      hardfork: 'arrowGlacier',
       initialBaseFeePerGas: '1000000000',
       chainId: 31337
     },
@@ -170,5 +172,8 @@ module.exports = {
     tests: './test',
     cache: './cache',
     artifacts: './artifacts'
+  },
+  gasReporter: {
+    enabled: !!process.env.REPORT_GAS ? true : false
   }
 }

@@ -1,13 +1,13 @@
 const { expect } = require('chai')
 
-const { deployWithConfirmation } = require('../../utils/deploy')
-
 const { stakingFixture } = require('../_fixture')
 const {
+  DUST,
+  ONE_DAY,
+  ONE_HUNDRED_TWENTY_DAYS,
   ONE_ETH,
   ONE_THOUSAND_OGN,
   BURN_ADDRESS,
-  ZERO_ADDRESS,
   blockStamp,
   expectSuccess,
   loadFixture,
@@ -17,23 +17,18 @@ const {
   snapshot,
   rollback
 } = require('../helpers')
-const {
-  ASSET_ETH_TOPIC,
-  REWARDS_COLLECTED_TOPIC,
-  REWARDS_PAID_TOPIC
-} = require('./_const')
+const { ASSET_ETH_TOPIC, REWARDS_SENT_TOPIC } = require('./_const')
 
 const abiCoder = ethers.utils.defaultAbiCoder
-const oneHundredTwentyDays = 60 * 60 * 24 * 120
-const oneDay = 60 * 60 * 24
 
 // Check that things mechanically work
 describe('Staking Scenarios', () => {
   describe('5 equal stakers over time', () => {
     const totalRewards = ONE_ETH.mul(123)
+    const rewardsOGN = ONE_THOUSAND_OGN.mul('100')
     let fixture,
       endTime,
-      lockPeriod,
+      lockStartTime,
       snapshotID,
       fundOGN,
       allowOGN,
@@ -56,67 +51,67 @@ describe('Staking Scenarios', () => {
       users = fixture.users
       userStake = fixture.userStake
 
+      const startTime = await fixture.seasonOne.startTime()
+      lockStartTime = await fixture.seasonOne.lockStartTime()
       endTime = await fixture.seasonOne.endTime()
-      const claimPeriod = await fixture.seasonOne.claimPeriod()
-      lockPeriod = await fixture.seasonOne.lockPeriod()
 
-      await deployWithConfirmation('SeasonTwo', [
-        fixture.series.address,
-        endTime,
-        endTime.add(oneHundredTwentyDays),
-        claimPeriod,
-        lockPeriod
-      ])
-
-      const seasonOneStart = await fixture.seasonOne.startTime()
-      await mineUntilTime(seasonOneStart.add(60 * 60))
+      await mineUntilTime(startTime.add(60 * 60))
       const now = await blockStamp()
-      expect(seasonOneStart).to.be.below(now)
+      expect(startTime).to.be.below(now)
     })
 
     after(async function () {
       await rollback(snapshotID)
     })
 
+    it('should show no expected rewards', async function () {
+      for (const name in users) {
+        const [expectedETH, expectedOGN] =
+          await fixture.seasonOne.expectedRewards(users[name].address)
+        expect(expectedETH).to.equal(0)
+        expect(expectedOGN).to.equal(0)
+      }
+    })
+
     it('lets alice stake', async function () {
       await userStake(users.alice)
       const stamp = await blockStamp()
-      await mineUntilTime(stamp + oneDay)
+      await mineUntilTime(stamp + ONE_DAY)
     })
 
     it('lets bob stake', async function () {
       const stamp = await blockStamp()
       await userStake(users.bob)
-      await mineUntilTime(stamp + oneDay * 3)
+      await mineUntilTime(stamp + ONE_DAY * 3)
     })
 
     it('lets charlie stake', async function () {
       await userStake(users.charlie)
       const stamp = await blockStamp()
-      await mineUntilTime(stamp + oneDay * 5)
+      await mineUntilTime(stamp + ONE_DAY * 5)
     })
 
     it('lets diana stake', async function () {
       await userStake(users.diana)
       const stamp = await blockStamp()
-      await mineUntilTime(stamp + oneDay * 14)
+      await mineUntilTime(stamp + ONE_DAY * 14)
     })
 
     it('lets elaine stake', async function () {
       await userStake(users.elaine)
       const stamp = await blockStamp()
-      await mineUntilTime(stamp + oneDay * 30)
+      await mineUntilTime(stamp + ONE_DAY * 30)
     })
 
     it('has sane staked amounts', async function () {
       const addresses = Object.keys(users).map((k) => users[k].address)
       let totalStaked = ethers.BigNumber.from(0)
       for (const address of addresses) {
-        const staked = await fixture.stOGN.balanceOf(address)
+        const staked = await fixture.series.balanceOf(address)
         expect(staked).to.equal(ONE_THOUSAND_OGN)
         totalStaked = totalStaked.add(staked)
       }
-      expect(await fixture.stOGN.totalSupply()).to.equal(totalStaked)
+      expect(await fixture.series.totalSupply()).to.equal(totalStaked)
     })
 
     it('has sane user points', async function () {
@@ -133,23 +128,23 @@ describe('Staking Scenarios', () => {
       expect(await fixture.seasonOne.getTotalPoints()).to.equal(totalPoints)
     })
 
-    it('has sane stOGN balances', async function () {
+    it('has sane stake balances', async function () {
       const addresses = Object.keys(users).map((k) => users[k].address)
       for (const address of addresses) {
-        expect(await fixture.stOGN.balanceOf(address)).to.equal(
+        expect(await fixture.series.balanceOf(address)).to.equal(
           ONE_THOUSAND_OGN
         )
       }
     })
 
-    it(`should not allow new stakes after lock period`, async function () {
-      const contractLockPeriod = (
-        await fixture.seasonOne.lockPeriod()
+    it(`should allow new stakes after lock period without points`, async function () {
+      const contractLockStart = (
+        await fixture.seasonOne.lockStartTime()
       ).toNumber()
-      expect(contractLockPeriod).to.equal(lockPeriod)
+      expect(contractLockStart).to.equal(lockStartTime)
 
       // Push us into the lock period
-      await mineUntilTime(endTime - lockPeriod + 100)
+      await mineUntilTime(lockStartTime)
 
       await fundOGN(users.alice.address, ONE_THOUSAND_OGN)
       await allowOGN(
@@ -157,11 +152,14 @@ describe('Staking Scenarios', () => {
         fixture.series.address,
         ONE_THOUSAND_OGN
       )
-      await expect(
-        fixture.series.connect(users.alice.signer).stake(ONE_THOUSAND_OGN)
-      ).to.be.revertedWith('Series: No available season for staking')
 
-      // Burn the OGN just so following balance chekcs function
+      const aliceOrig = await fixture.seasonOne.getPoints(users.alice.address)
+      await userStake(users.alice)
+      const aliceAfter = await fixture.seasonOne.getPoints(users.alice.address)
+
+      expect(aliceOrig).to.equal(aliceAfter)
+
+      // Burn the OGN just so following balance checks function
       await fixture.mockOGN
         .connect(users.alice.signer)
         .transfer(BURN_ADDRESS, ONE_THOUSAND_OGN)
@@ -176,21 +174,15 @@ describe('Staking Scenarios', () => {
       )
 
       // Send some OGN rewards to the season as well
-      const rewardsOGN = ONE_THOUSAND_OGN.mul('100')
-      await fundOGN(fixture.seasonOne.address, rewardsOGN)
+      await fundOGN(fixture.feeVault.address, rewardsOGN)
       expect(
-        await fixture.mockOGN.balanceOf(fixture.seasonOne.address)
+        await fixture.mockOGN.balanceOf(fixture.feeVault.address)
       ).to.equal(rewardsOGN)
-
-      // Setup SeasonTwo
-      await expectSuccess(
-        fixture.series
-          .connect(fixture.deployer)
-          .pushSeason(fixture.seasonTwo.address)
-      )
 
       // Wrap up the season
       await mineUntilTime(endTime)
+      // Sometimes stamp is equal +1s, so this reduces test flakiness
+      await mineBlocks(1)
 
       expect((await ethers.provider.getBlock()).timestamp).to.be.above(endTime)
     })
@@ -205,12 +197,12 @@ describe('Staking Scenarios', () => {
         // Get the RewardsPaid event and store amount paid
         const paidETHEv = receipt.logs.filter(
           (ev) =>
-            ev.topics[0] === REWARDS_PAID_TOPIC &&
+            ev.topics[0] === REWARDS_SENT_TOPIC &&
             ev.topics[1] === ASSET_ETH_TOPIC
         )[0]
         const paidOGNEv = receipt.logs.filter(
           (ev) =>
-            ev.topics[0] === REWARDS_PAID_TOPIC &&
+            ev.topics[0] === REWARDS_SENT_TOPIC &&
             ev.topics[1] ===
               `0x${fixture.mockOGN.address
                 .slice(2)
@@ -223,7 +215,7 @@ describe('Staking Scenarios', () => {
 
         expect(paidETH).to.be.above(0)
         expect(paidOGN).to.be.above(0)
-        expect(await fixture.stOGN.balanceOf(user.address)).to.equal(0)
+        expect(await fixture.series.balanceOf(user.address)).to.equal(0)
 
         // Verify rewards were paid
         const balanceETH = await ethers.provider.getBalance(user.address)
@@ -233,14 +225,9 @@ describe('Staking Scenarios', () => {
 
         // rough equality because of gas fees
         expect(roughlyEqual(balanceETH, expectedETH)).to.be.true
-        expect(roughlyEqual(balanceOGN, expectedOGN)).to.be.true
+        expect(balanceOGN).to.equal(expectedOGN)
 
         await mineBlocks(1)
-
-        // An unstake after season end should trigger transfer from vault
-        expect(
-          await ethers.provider.getBalance(fixture.feeVault.address)
-        ).to.equal(0)
       })
     }
 
@@ -263,15 +250,21 @@ describe('Staking Scenarios', () => {
       const seasonOneBalance = await ethers.provider.getBalance(
         fixture.seasonOne.address
       )
-      expect(vaultBalance).to.equal(0)
-      /**
-       * TODO: There's dust of 2wei left-over in this test.  Need to figure
-       * out what to do about it.
-       */
-      expect(seasonOneBalance).to.be.below(100)
-      expect(totalPaid.add(seasonOneBalance)).to.equal(totalRewards)
-      //expect(seasonOneBalance).to.equal(0)
-      //expect(totalPaid).to.equal(totalRewards)
+      const snapshot = await fixture.seasonOne.snapshot()
+
+      expect(seasonOneBalance).to.equal(0)
+      // Usually a tiny bit of dust leftover from share math
+      expect(vaultBalance).to.be.below(DUST)
+      expect(totalPaid).to.equal(totalRewards.sub(vaultBalance))
+      expect(snapshot.rewardETH).to.equal(totalRewards)
+      expect(snapshot.rewardOGN).to.equal(rewardsOGN)
+
+      const meta = await fixture.seasonOne.season()
+      expect(meta.bootstrapped).to.be.true
+      expect(meta.snapshotTaken).to.be.true
+      expect(meta.totalPoints).to.equal(
+        await fixture.seasonOne.getTotalPoints()
+      )
     })
 
     it('(noop) shows user data', async function () {
@@ -295,7 +288,7 @@ describe('Staking Scenarios', () => {
           await fixture.mockOGN.balanceOf(users[user].address)
         ).sub(users[user].originalBalanceOGN)
         toatlOGNPaid = toatlOGNPaid.add(paidOGN)
-        const days = Math.floor((endTime - users[user].timestamp) / oneDay)
+        const days = Math.floor((endTime - users[user].timestamp) / ONE_DAY)
         console.log(
           `${user},${ethers.utils.formatUnits(
             users[user].points
@@ -331,17 +324,6 @@ describe('Staking Scenarios', () => {
       deployer = fixture.deployer
 
       endTime = await fixture.seasonOne.endTime()
-      const claimPeriod = await fixture.seasonOne.claimPeriod()
-      const lockPeriod = await fixture.seasonOne.lockPeriod()
-
-      await deployWithConfirmation('SeasonTwo', [
-        fixture.series.address,
-        endTime,
-        endTime.add(oneHundredTwentyDays),
-        claimPeriod,
-        lockPeriod
-      ])
-      fixture.seasonTwo = await ethers.getContract('SeasonTwo')
     })
 
     after(async function () {
@@ -370,7 +352,7 @@ describe('Staking Scenarios', () => {
       await mineUntilTime(endTime)
 
       // Should only be 1k left from Alice
-      expect(await fixture.stOGN.totalSupply()).to.equal(ONE_THOUSAND_OGN)
+      expect(await fixture.series.totalSupply()).to.equal(ONE_THOUSAND_OGN)
     })
 
     it('lets charlie stake on SeasonTwo', async function () {
@@ -384,7 +366,7 @@ describe('Staking Scenarios', () => {
     })
 
     it('is has sane values of rolled over stakes', async function () {
-      expect(await fixture.stOGN.totalSupply()).to.equal(
+      expect(await fixture.series.totalSupply()).to.equal(
         ONE_THOUSAND_OGN.mul(3)
       )
       expect(await fixture.seasonTwo.getTotalPoints()).to.be.above(
@@ -417,16 +399,6 @@ describe('Staking Scenarios', () => {
       deployer = fixture.deployer
 
       endTime = await fixture.seasonOne.endTime()
-      const claimPeriod = await fixture.seasonOne.claimPeriod()
-      const lockPeriod = await fixture.seasonOne.lockPeriod()
-
-      await deployWithConfirmation('SeasonTwo', [
-        fixture.series.address,
-        endTime,
-        endTime.add(oneHundredTwentyDays),
-        claimPeriod,
-        lockPeriod
-      ])
       fixture.seasonTwo = await ethers.getContract('SeasonTwo')
     })
 
@@ -450,8 +422,8 @@ describe('Staking Scenarios', () => {
         fixture.series.connect(deployer).pushSeason(fixture.seasonTwo.address)
       )
 
-      // Previous season should still be zero
-      expect(await fixture.series.previousSeason()).to.equal(ZERO_ADDRESS)
+      // Should be no previous season yet
+      expect(await fixture.series.currentStakingIndex()).to.equal(0)
 
       // SeasonOne is over
       await mineUntilTime(endTime)
@@ -461,26 +433,27 @@ describe('Staking Scenarios', () => {
       await userStake(users.charlie)
 
       // Previous season should now be SeasonOne
-      expect(await fixture.series.previousSeason()).to.equal(
+      const currentStakingIndex = await fixture.series.currentStakingIndex()
+      expect(await fixture.series.seasons(currentStakingIndex - 1)).to.equal(
         fixture.seasonOne.address
       )
     })
 
     it('lets bob unstake from SeasonOne', async function () {
-      expect(await fixture.stOGN.totalSupply()).to.equal(
+      expect(await fixture.series.totalSupply()).to.equal(
         ONE_THOUSAND_OGN.mul(3)
       )
 
       await expectSuccess(fixture.series.connect(users.bob.signer).unstake())
 
       // Should only be 1k left from Alice
-      expect(await fixture.stOGN.totalSupply()).to.equal(
+      expect(await fixture.series.totalSupply()).to.equal(
         ONE_THOUSAND_OGN.mul(2)
       )
     })
 
     it('is has sane values of rolled over stakes', async function () {
-      expect(await fixture.stOGN.totalSupply()).to.equal(
+      expect(await fixture.series.totalSupply()).to.equal(
         ONE_THOUSAND_OGN.mul(2)
       )
       expect(await fixture.seasonTwo.getTotalPoints()).to.be.above(
@@ -493,7 +466,6 @@ describe('Staking Scenarios', () => {
     let fixture,
       deployer,
       endTime,
-      nobody,
       snapshotID,
       fundOGN,
       users = {
@@ -514,19 +486,8 @@ describe('Staking Scenarios', () => {
       users = fixture.users
       userStake = fixture.userStake
       deployer = fixture.deployer
-      nobody = fixture.nobody
 
       endTime = await fixture.seasonOne.endTime()
-      const claimPeriod = await fixture.seasonOne.claimPeriod()
-      const lockPeriod = await fixture.seasonOne.lockPeriod()
-
-      await deployWithConfirmation('SeasonTwo', [
-        fixture.series.address,
-        endTime,
-        endTime.add(oneHundredTwentyDays),
-        claimPeriod,
-        lockPeriod
-      ])
       fixture.seasonTwo = await ethers.getContract('SeasonTwo')
     })
 
@@ -554,9 +515,9 @@ describe('Staking Scenarios', () => {
 
       // Send some OGN rewards to the season as well
       const rewardsOGN = ONE_THOUSAND_OGN.mul('100')
-      await fundOGN(fixture.seasonOne.address, rewardsOGN)
+      await fundOGN(fixture.feeVault.address, rewardsOGN)
       expect(
-        await fixture.mockOGN.balanceOf(fixture.seasonOne.address)
+        await fixture.mockOGN.balanceOf(fixture.feeVault.address)
       ).to.equal(rewardsOGN)
 
       // Setup SeasonTwo
@@ -566,37 +527,30 @@ describe('Staking Scenarios', () => {
 
       // SeasonOne is over
       await mineUntilTime(endTime)
+      await mineBlocks(1)
     })
 
     it('lets alice collect rewards', async function () {
       const user = users.alice
 
       const endTime = await fixture.seasonOne.endTime()
-      const claimPeriod = await fixture.seasonOne.claimPeriod()
+      const claimEndTime = await fixture.seasonOne.claimEndTime()
       const now = await blockStamp()
       expect(now).to.be.above(endTime)
-      expect(now).to.be.below(endTime.add(claimPeriod))
+      expect(now).to.be.below(claimEndTime)
 
       const [expectedETHCalculated, expectedOGNCalculated] =
         await fixture.seasonOne.expectedRewards(user.address)
-      const receipt = await expectSuccess(
-        fixture.series.claimRewards(user.address)
-      )
-
-      const collectedEv = receipt.logs.filter(
-        (ev) => ev.topics[0] === REWARDS_COLLECTED_TOPIC
-      )[0]
-      const collectedETH = abiCoder.decode(['uint256'], collectedEv.data)[0]
-      expect(collectedETH).to.equal(ONE_ETH)
+      const receipt = await expectSuccess(fixture.series.claim(user.address))
 
       const paidETHEv = receipt.logs.filter(
         (ev) =>
-          ev.topics[0] === REWARDS_PAID_TOPIC &&
+          ev.topics[0] === REWARDS_SENT_TOPIC &&
           ev.topics[1] === ASSET_ETH_TOPIC
       )[0]
       const paidOGNEv = receipt.logs.filter(
         (ev) =>
-          ev.topics[0] === REWARDS_PAID_TOPIC &&
+          ev.topics[0] === REWARDS_SENT_TOPIC &&
           ev.topics[1] ===
             `0x${fixture.mockOGN.address
               .slice(2)
@@ -609,7 +563,7 @@ describe('Staking Scenarios', () => {
 
       expect(paidETH).to.be.above(0)
       expect(paidOGN).to.be.above(0)
-      expect(await fixture.stOGN.balanceOf(user.address)).to.equal(
+      expect(await fixture.series.balanceOf(user.address)).to.equal(
         ONE_THOUSAND_OGN
       )
 
@@ -625,38 +579,13 @@ describe('Staking Scenarios', () => {
       expect(paidETH).to.equal(expectedETHCalculated)
       expect(paidOGN).to.equal(expectedOGNCalculated)
     })
-
-    it('refunds the vault after claim period', async function () {
-      await expect(
-        fixture.seasonOne.connect(nobody).wrapUp()
-      ).to.be.revertedWith('SeasonOne: Claim period not over')
-
-      const seasonETH = await ethers.provider.getBalance(
-        fixture.seasonOne.address
-      )
-      const seasonOGN = await fixture.mockOGN.balanceOf(
-        fixture.seasonOne.address
-      )
-
-      const claimPeriodEnd = (await fixture.seasonOne.claimPeriod()).toNumber()
-      await mineUntilTime(endTime + claimPeriodEnd)
-
-      await expectSuccess(fixture.seasonOne.connect(nobody).wrapUp())
-
-      expect(
-        await ethers.provider.getBalance(fixture.feeVault.address)
-      ).to.equal(seasonETH)
-      expect(
-        await fixture.mockOGN.balanceOf(fixture.seasonTwo.address)
-      ).to.equal(seasonOGN)
-    })
   })
 
   describe('should pre-stake in SeasonTwo when SeasonOne in lock period', () => {
     let fixture,
       deployer,
       endTime,
-      lockPeriod,
+      lockStartTime,
       snapshotID,
       fundOGN,
       allowOGN,
@@ -674,26 +603,15 @@ describe('Staking Scenarios', () => {
       await deployments.fixture()
 
       fixture = await loadFixture(stakingFixture)
-      allowOGN = fixture.allowOGN
-      fundOGN = fixture.fundOGN
       users = fixture.users
       userStake = fixture.userStake
       deployer = fixture.deployer
 
       endTime = await fixture.seasonOne.endTime()
-      const claimPeriod = await fixture.seasonOne.claimPeriod()
-      lockPeriod = await fixture.seasonOne.lockPeriod()
-
-      await deployWithConfirmation('SeasonTwo', [
-        fixture.series.address,
-        endTime,
-        endTime.add(oneHundredTwentyDays),
-        claimPeriod,
-        lockPeriod
-      ])
+      lockStartTime = await fixture.seasonOne.lockStartTime()
       fixture.seasonTwo = await ethers.getContract('SeasonTwo')
 
-      const initialSupply = await fixture.stOGN.totalSupply()
+      const initialSupply = await fixture.series.totalSupply()
       expect(initialSupply).to.equal(0)
       expect(await fixture.seasonOne.getTotalPoints()).to.equal(0)
       expect(await fixture.seasonTwo.getTotalPoints()).to.equal(0)
@@ -709,7 +627,7 @@ describe('Staking Scenarios', () => {
         users.alice.points
       )
       await mineBlocks(100)
-      expect(await fixture.stOGN.totalSupply()).to.equal(ONE_THOUSAND_OGN)
+      expect(await fixture.series.totalSupply()).to.equal(ONE_THOUSAND_OGN)
     })
 
     it('lets bob stake', async function () {
@@ -718,7 +636,7 @@ describe('Staking Scenarios', () => {
         users.alice.points.add(users.bob.points)
       )
       await mineBlocks(100)
-      expect(await fixture.stOGN.totalSupply()).to.equal(
+      expect(await fixture.series.totalSupply()).to.equal(
         ONE_THOUSAND_OGN.mul(2)
       )
     })
@@ -737,11 +655,11 @@ describe('Staking Scenarios', () => {
       )
 
       // SeasonOne is now locked
-      await mineUntilTime(endTime.sub(lockPeriod))
+      await mineUntilTime(lockStartTime)
     })
 
     it('charlie pre-stake in season two', async function () {
-      const supplyBeforeStake = await fixture.stOGN.totalSupply()
+      const supplyBeforeStake = await fixture.series.totalSupply()
       const seasonOnePoints = await fixture.seasonOne.getTotalPoints()
 
       await userStake(users.charlie)
@@ -763,8 +681,9 @@ describe('Staking Scenarios', () => {
       expect(seasonTwoTotal).to.be.above(charliePoints)
       expect(seasonTwoTotal).to.be.above(seasonOnePoints)
 
-      const oneDays = ethers.BigNumber.from(60 * 60 * 24)
-      const stakeDays = ethers.BigNumber.from(oneHundredTwentyDays).div(oneDays)
+      const stakeDays = ethers.BigNumber.from(ONE_HUNDRED_TWENTY_DAYS).div(
+        ONE_DAY
+      )
       const expectedRolloverPoints = supplyBeforeStake.mul(stakeDays)
 
       expect(seasonTwoTotal).to.equal(charliePoints.add(expectedRolloverPoints))
@@ -787,13 +706,16 @@ describe('Staking Scenarios', () => {
 
       await expectSuccess(fixture.series.connect(users.bob.signer).unstake())
 
-      // Bob should've had more points in season two
       const seasonOnePointsAfter = await fixture.seasonOne.getTotalPoints()
       const seasonTwoPointsAfter = await fixture.seasonTwo.getTotalPoints()
+      // Points should have reduced in season one
       expect(seasonOnePointsAfter).to.equal(
         seasonOnePoints.sub(users.bob.points)
       )
-      expect(seasonTwoPointsAfter).to.be.below(
+      // Season two should have changed as well since Bob's points would have
+      // rolled over during bootstrap() in push() even though he never
+      // interacted with it
+      expect(seasonTwoPointsAfter).to.equal(
         seasonTwoPoints.sub(users.bob.points)
       )
     })
@@ -814,9 +736,180 @@ describe('Staking Scenarios', () => {
       const seasonTwoPointsAfter = await fixture.seasonTwo.getTotalPoints()
       // No change expected in season one
       expect(seasonOnePointsAfter).to.equal(seasonOnePoints)
-      expect(seasonTwoPointsAfter).to.be.below(
-        seasonTwoPoints.sub(users.bob.points)
+      expect(seasonTwoPointsAfter).to.equal(
+        seasonTwoPoints.sub(users.charlie.points)
       )
+    })
+  })
+
+  describe('Can stake after lock without a next season', () => {
+    let fixture,
+      claimEndTime,
+      endTime,
+      lockStartTime,
+      snapshotID,
+      users = {
+        alice: null,
+        bob: null,
+        charlie: null,
+        diana: null,
+        elaine: null
+      },
+      userStake
+
+    before(async function () {
+      snapshotID = await snapshot()
+      await deployments.fixture()
+
+      fixture = await loadFixture(stakingFixture)
+      users = fixture.users
+      userStake = fixture.userStake
+
+      lockStartTime = await fixture.seasonOne.lockStartTime()
+      endTime = await fixture.seasonOne.endTime()
+      claimEndTime = await fixture.seasonOne.claimEndTime()
+    })
+
+    after(async function () {
+      await rollback(snapshotID)
+    })
+
+    it('lets alice stakes', async function () {
+      await userStake(users.alice)
+      await mineBlocks(100)
+    })
+
+    it('lets bob stake', async function () {
+      await userStake(users.bob)
+      await mineBlocks(100)
+    })
+
+    it('Season one should entered lock period', async function () {
+      // SeasonOne is now locked
+      await mineUntilTime(lockStartTime)
+      expect(
+        await fixture.series.seasons(await fixture.series.currentStakingIndex())
+      ).to.equal(fixture.seasonOne.address)
+    })
+
+    it('lets charlie stake on SeasonOne but receives no points', async function () {
+      await userStake(users.charlie)
+      expect(await fixture.seasonOne.getPoints(users.charlie.address)).to.equal(
+        0
+      )
+      expect(await fixture.series.balanceOf(users.charlie.address)).to.equal(
+        ONE_THOUSAND_OGN
+      )
+      expect(
+        await fixture.series.seasons(await fixture.series.currentStakingIndex())
+      ).to.equal(fixture.seasonOne.address)
+    })
+
+    it('lets charlie unstake on SeasonOne but receives no rewards', async function () {
+      await mineUntilTime(endTime)
+
+      const receipt = await expectSuccess(
+        fixture.series.connect(users.charlie.signer).unstake()
+      )
+      const paidEvs = receipt.logs.filter(
+        (ev) => ev.topics[0] === REWARDS_SENT_TOPIC
+      )
+      expect(paidEvs).to.have.lengthOf(0)
+    })
+
+    it('lets alice unstake on SeasonOne after claim end and receives no rewards', async function () {
+      await mineUntilTime(claimEndTime)
+
+      const receipt = await expectSuccess(
+        fixture.series.connect(users.alice.signer).unstake()
+      )
+      const paidEvs = receipt.logs.filter(
+        (ev) => ev.topics[0] === REWARDS_SENT_TOPIC
+      )
+      expect(paidEvs).to.have.lengthOf(0)
+    })
+  })
+
+  describe('Rewards paid if unstake in rolled over Season', () => {
+    const totalRewards = ONE_ETH.mul(3)
+    let fixture,
+      snapshotID,
+      users = {
+        alice: null,
+        bob: null,
+        charlie: null,
+        diana: null,
+        elaine: null
+      },
+      userStake
+
+    before(async function () {
+      snapshotID = await snapshot()
+      await deployments.fixture()
+
+      fixture = await loadFixture(stakingFixture)
+      users = fixture.users
+      userStake = fixture.userStake
+    })
+
+    after(async function () {
+      await rollback(snapshotID)
+    })
+
+    it('lets alice stakes', async function () {
+      await userStake(users.alice)
+      await mineBlocks(100)
+    })
+
+    it('lets bob stake', async function () {
+      await userStake(users.bob)
+      await mineBlocks(100)
+    })
+
+    it('Season one ends and season two should entered lock period', async function () {
+      // Setup SeasonTwo
+      await expectSuccess(
+        fixture.series
+          .connect(fixture.deployer)
+          .pushSeason(fixture.seasonTwo.address)
+      )
+
+      // Drop some rewards
+      await expectSuccess(
+        fixture.master.sendTransaction({
+          to: fixture.feeVault.address,
+          value: totalRewards
+        })
+      )
+
+      // SeasonTwo is over
+      await mineUntilTime((await fixture.seasonTwo.endTime()).add(60 * 60))
+
+      // To make sure it gets bootstrapped
+      await userStake(users.charlie)
+    })
+
+    it('lets bob unstake on Season two and receives season two rewards', async function () {
+      expect(await fixture.series.currentClaimingIndex()).to.equal(0)
+      const beforeBalance = await users.bob.signer.getBalance()
+      expect(await fixture.seasonTwo.getPoints(users.bob.address)).to.be.above(
+        0
+      )
+      expect(await fixture.series.balanceOf(users.bob.address)).to.equal(
+        ONE_THOUSAND_OGN
+      )
+      const receipt = await expectSuccess(
+        fixture.series.connect(users.bob.signer).unstake()
+      )
+      // claiming index should have advanced
+      expect(await fixture.series.currentClaimingIndex()).to.equal(1)
+      const afterBalance = await users.bob.signer.getBalance()
+      expect(await fixture.series.balanceOf(users.bob.address)).to.equal(0)
+      expect(
+        afterBalance
+          .sub(beforeBalance)
+          .add(receipt.gasUsed.mul(receipt.effectiveGasPrice))
+      ).to.equal(totalRewards.div(2))
     })
   })
 })

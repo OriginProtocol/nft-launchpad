@@ -7,12 +7,9 @@ staking.
 
 - `Series` - The primary interface for users to stake, unstake. It's also the
   source of truth for the season sequencing and relevant addresses
-- `SeasonOne` - The logic for season one staking and rewards calculation
-- `SeasonTwo` - The unfinished template logic for season two staking and rewards
-  calculation. This is currently identical to SeasonOne
-- `stOGN` - An ERC-20-like OGN vault used to track OGN stakes across seasons
-- `FeeVault` - The royalty recipient and storage vault of ETH profit shares to
-  be distributed to stakers.
+- `Season` - The logic for season one staking and rewards calculation
+- `FeeVault` - The royalty recipient and storage vault of ETH profit shares and
+  other token rewards to be distributed to stakers.
 
 ### Season Lifecycle
 

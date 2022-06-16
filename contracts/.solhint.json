@@ -1,0 +1,10 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "avoid-sha3": "error",
+    "func-visibility": ["error",{"ignoreConstructors":true}],
+    "no-unused-vars": "error",
+    "compiler-version": ["error","^0.8.0"],
+    "quotes": "off"
+  }
+}
