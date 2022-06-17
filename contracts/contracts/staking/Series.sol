@@ -205,48 +205,6 @@ contract Series is Initializable, Governable, ISeries {
             'Series: OGN transfer failed'
         );
 
-<<<<<<< Updated upstream
-        uint128 ognStaked;
-        uint128 stakePoints;
-
-        // If the season is locked, we cannot stake to it
-        if (!season.isLocked()) {
-            sToken.mint(userAddress, amount);
-            (ognStaked, stakePoints) = season.stake(userAddress);
-        }
-        // But we may be able to pre-stake to the next season
-        else {
-            require(
-                activeSeason < seasons.length - 1,
-                'Series: No available season for staking'
-            );
-
-            uint256 nextIdx = activeSeason + 1;
-            ISeason next = ISeason(seasons[nextIdx]);
-
-            // before() usually called in _acquireSeason() but we need to
-            // manually call it since we aren't using it here.
-            next.before(userAddress);
-
-            require(!next.isEnded(), 'Series: Next season ended');
-
-            // No reason next season should finale at this point. If it does,
-            // it could cause some issues.
-            require(
-                activeSeason != nextIdx,
-                'Series: Unexpected season change'
-            );
-
-            // This needs to happen after the before() call above, since
-            // before() may use stOGN totals for points rollover
-            sToken.mint(userAddress, amount);
-
-            // Stake in next season
-            (ognStaked, stakePoints) = next.stake(userAddress);
-        }
-
-        return (ognStaked, stakePoints);
-=======
         // Record stake for the user and get their points total for return
         stakePoints = season.stake(userAddress, amount);
 
@@ -258,7 +216,6 @@ contract Series is Initializable, Governable, ISeries {
         userLastStakingTime[userAddress] = block.timestamp;
 
         return (stakedOGN[userAddress], stakePoints);
->>>>>>> Stashed changes
     }
 
     /**

@@ -47,24 +47,16 @@ interface ISeason {
         view
         returns (uint256, uint256);
 
-<<<<<<< Updated upstream
-    function isLocked() external view returns (bool);
-
-    function isEnded() external view returns (bool);
-
-    function isClaimPeriod() external view returns (bool);
-
-    function before(address userAddress) external;
-=======
     function pointsInTime(uint256 amount, uint256 blockStamp)
         external
         view
         returns (uint128);
->>>>>>> Stashed changes
 
     function claim(address userAddress) external returns (uint256, uint256);
 
-    function stake(address userAddress) external returns (uint128, uint128);
+    function stake(address userAddress, uint256 amount)
+        external
+        returns (uint128);
 
     function unstake(address userAddress) external returns (uint256, uint256);
 
