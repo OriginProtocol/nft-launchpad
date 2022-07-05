@@ -6,8 +6,11 @@ const {
   ONE_ETH,
   ONE_THOUSAND_OGN,
   ZERO_ADDRESS,
+  blockStamp,
   expectSuccess,
   loadFixture,
+  mineBlocks,
+  mineUntilTime,
   randomAddress,
   rollback,
   snapshot
@@ -151,9 +154,7 @@ describe('Series', () => {
     await expect(series.unstake()).to.be.revertedWith(
       'Series: No active season'
     )
-    await expect(series.claim(randomAddress())).to.be.revertedWith(
-      'Series: No active season'
-    )
+    await expect(series.claim()).to.be.revertedWith('Series: No active season')
   })
 
   it('can not remove an active season', async function () {
@@ -258,5 +259,193 @@ describe('Series', () => {
     await expect(
       fixture.series.pushSeason(seasonTwo.address)
     ).to.be.revertedWith('Series: Invalid start time')
+  })
+
+  it('should return the live season (first season)', async function () {
+    expect(await fixture.series.liveSeason()).to.equal(0)
+  })
+
+  it('should return the live season (first season)', async function () {
+    expect(await fixture.series.liveSeason()).to.equal(0)
+  })
+
+  it('should return the live season (first season, no advance)', async function () {
+    await fixture.series.pushSeason(fixture.seasonTwo.address)
+
+    await mineUntilTime(await fixture.seasonOne.endTime())
+
+    expect(await fixture.series.liveSeason()).to.equal(1)
+  })
+
+  it('should return the live season (second season, advanced)', async function () {
+    await fixture.series.pushSeason(fixture.seasonTwo.address)
+
+    await mineUntilTime(await fixture.seasonOne.endTime())
+    await fixture.userStake(fixture.users.alice)
+
+    expect(await fixture.series.liveSeason()).to.equal(1)
+  })
+
+  it('should return the live season (third season, partial advance)', async function () {
+    await fixture.series.pushSeason(fixture.seasonTwo.address)
+
+    // Deploy a SeasonThree to make sure expected doesn't skip ahead
+    const startTime = await fixture.seasonTwo.endTime()
+    const lockStartTime = startTime + 200
+    const endTime = (await fixture.seasonTwo.claimEndTime()) + 300
+    const claimEndTime = endTime + 400
+    await deployWithConfirmation(
+      'SeasonThreeLive',
+      [fixture.series.address, startTime, lockStartTime, endTime, claimEndTime],
+      'Season'
+    )
+    const seasonThree = await ethers.getContract('SeasonThreeLive')
+    await fixture.series.pushSeason(seasonThree.address)
+
+    await mineUntilTime(await fixture.seasonOne.endTime())
+    await fixture.userStake(fixture.users.alice)
+
+    expect(await fixture.series.liveSeason()).to.equal(1)
+  })
+
+  it('should return zero for current staking season if no seasons', async function () {
+    // Deploy a Series with no seasons
+    await deployWithConfirmation('TestSeriesNoSeason1', [], 'Series')
+    const seriesImpl = await ethers.getContract('TestSeriesNoSeason1')
+
+    await deployWithConfirmation(
+      'TestSeriesNoSeason1Proxy',
+      [seriesImpl.address, fixture.mockOGN.address, fixture.feeVault.address],
+      'SeriesProxy'
+    )
+    const seriesProxy = await ethers.getContract('TestSeriesNoSeason1Proxy')
+    const series = await ethers.getContractAt('Series', seriesProxy.address)
+
+    expect(await series.expectedStakingSeason()).to.equal(ZERO_ADDRESS)
+  })
+
+  it('should return zero for current staking season if no seasons have started', async function () {
+    // Deploy a Series with no seasons
+    await deployWithConfirmation('TestSeriesNoSeasonStarted1', [], 'Series')
+    const seriesImpl = await ethers.getContract('TestSeriesNoSeasonStarted1')
+
+    await deployWithConfirmation(
+      'TestSeriesNoSeasonStarted1Proxy',
+      [seriesImpl.address, fixture.mockOGN.address, fixture.feeVault.address],
+      'SeriesProxy'
+    )
+    const seriesProxy = await ethers.getContract(
+      'TestSeriesNoSeasonStarted1Proxy'
+    )
+    const series = await ethers.getContractAt('Series', seriesProxy.address)
+
+    // Deploy a SeasonOne in the future
+    const startTime = (await blockStamp()) + 60 * 60
+    const lockStartTime = startTime + 200
+    const endTime = lockStartTime + 300
+    const claimEndTime = endTime + 400
+    await deployWithConfirmation(
+      'SeasonOneNotStarted',
+      [series.address, startTime, lockStartTime, endTime, claimEndTime],
+      'Season'
+    )
+    const seasonOne = await ethers.getContract('SeasonOneNotStarted')
+    await series.pushSeason(seasonOne.address)
+
+    // Deploy a SeasonTwo, also in the future
+    const startTime2 = await seasonOne.endTime()
+    const lockStartTime2 = startTime2 + 200
+    const endTime2 = lockStartTime2 + 300
+    const claimEndTime2 = endTime2 + 400
+    await deployWithConfirmation(
+      'SeasonTwoNotStarted',
+      [series.address, startTime2, lockStartTime2, endTime2, claimEndTime2],
+      'Season'
+    )
+    const seasonTwo = await ethers.getContract('SeasonTwoNotStarted')
+    await series.pushSeason(seasonTwo.address)
+
+    expect(await series.liveSeason()).to.equal(ZERO_ADDRESS)
+  })
+
+  it('should return the current staking season (no second season)', async function () {
+    await mineUntilTime(await fixture.seasonOne.lockStartTime())
+
+    expect(await fixture.series.expectedStakingSeason()).to.equal(
+      fixture.seasonOne.address
+    )
+  })
+
+  it('should return the current staking season (advance)', async function () {
+    await fixture.series.pushSeason(fixture.seasonTwo.address)
+
+    await mineUntilTime(await fixture.seasonOne.lockStartTime())
+    await mineBlocks(1)
+
+    expect(await fixture.series.expectedStakingSeason()).to.equal(
+      fixture.seasonTwo.address
+    )
+  })
+
+  it('should return zero for current claiming season if no seasons', async function () {
+    // Deploy a Series with no seasons
+    await deployWithConfirmation('TestSeriesNoSeason2', [], 'Series')
+    const seriesImpl = await ethers.getContract('TestSeriesNoSeason2')
+
+    await deployWithConfirmation(
+      'TestSeriesNoSeason2Proxy',
+      [seriesImpl.address, fixture.mockOGN.address, fixture.feeVault.address],
+      'SeriesProxy'
+    )
+    const seriesProxy = await ethers.getContract('TestSeriesNoSeason2Proxy')
+    const series = await ethers.getContractAt('Series', seriesProxy.address)
+
+    expect(await series.expectedClaimingSeason()).to.equal(ZERO_ADDRESS)
+  })
+
+  it('should return the expected claiming season (no advance)', async function () {
+    expect(await fixture.series.expectedClaimingSeason()).to.equal(
+      fixture.seasonOne.address
+    )
+  })
+
+  it('should return the expected claiming season (no second season)', async function () {
+    await mineUntilTime(await fixture.seasonOne.claimEndTime())
+
+    expect(await fixture.series.expectedClaimingSeason()).to.equal(
+      fixture.seasonOne.address
+    )
+  })
+
+  it('should return the expected claiming season (advance)', async function () {
+    await fixture.series.pushSeason(fixture.seasonTwo.address)
+
+    // Need to move into a certain state to try and trigger an error that only
+    // occurs where claiming and staking indexes do not match
+    await mineUntilTime(await fixture.seasonOne.lockStartTime())
+    await fixture.userStake(fixture.users.alice)
+
+    // Deploy a SeasonThree to make sure expected doesn't skip ahead
+    const startTime = await fixture.seasonTwo.endTime()
+    const lockStartTime = startTime + 200
+    const endTime = (await fixture.seasonTwo.claimEndTime()) + 300
+    const claimEndTime = endTime + 400
+    await deployWithConfirmation(
+      'SeasonThree',
+      [fixture.series.address, startTime, lockStartTime, endTime, claimEndTime],
+      'Season'
+    )
+    const seasonThree = await ethers.getContract('SeasonThree')
+    await fixture.series.pushSeason(seasonThree.address)
+
+    await mineUntilTime(await fixture.seasonOne.claimEndTime())
+    await mineBlocks(1)
+
+    const expected = await fixture.series.expectedClaimingSeason()
+    expect(expected).to.equal(fixture.seasonTwo.address)
+
+    const index = await fixture.series.currentClaimingIndex()
+    const indexed = await fixture.series.seasons(index + 1)
+    expect(expected).to.equal(indexed)
   })
 })

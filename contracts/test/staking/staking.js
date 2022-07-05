@@ -505,6 +505,18 @@ describe('Staking Scenarios', () => {
       await mineBlocks(100)
     })
 
+    it('should not unstake from season if Alice claims early', async function () {
+      const user = users.alice
+      const originalPoints = await fixture.seasonOne.getPoints(user.address)
+      const receipt = await expectSuccess(
+        fixture.series.connect(user.signer).claim()
+      )
+      expect(receipt.logs).to.have.lengthOf(0)
+      expect(await fixture.seasonOne.getPoints(user.address)).to.equal(
+        originalPoints
+      )
+    })
+
     it('(noop) end season', async function () {
       await expectSuccess(
         fixture.master.sendTransaction({
@@ -541,7 +553,9 @@ describe('Staking Scenarios', () => {
 
       const [expectedETHCalculated, expectedOGNCalculated] =
         await fixture.seasonOne.expectedRewards(user.address)
-      const receipt = await expectSuccess(fixture.series.claim(user.address))
+      const receipt = await expectSuccess(
+        fixture.series.connect(user.signer).claim()
+      )
 
       const paidETHEv = receipt.logs.filter(
         (ev) =>

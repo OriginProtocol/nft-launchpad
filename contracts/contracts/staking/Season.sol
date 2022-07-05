@@ -172,7 +172,17 @@ contract Season is ISeason {
      * @return total points of all users' stakes
      */
     function getTotalPoints() external view override returns (uint128) {
-        return season.totalPoints;
+        if (season.bootstrapped) {
+            return season.totalPoints;
+        } else if (block.timestamp >= startTime) {
+            // Any new stakes should trigger a bootstrap using these same
+            // numbers.  This is just a convenience for early season fetch
+            // before new stakes.
+            uint256 stakedOGN = series.totalSupply();
+            return _pointsInTime(stakedOGN, startTime);
+        }
+
+        return 0;
     }
 
     /**
@@ -189,7 +199,11 @@ contract Season is ISeason {
         override
         returns (uint256, uint256)
     {
-        if (block.timestamp < endTime || block.timestamp >= claimEndTime) {
+        if (
+            block.timestamp < endTime ||
+            block.timestamp >= claimEndTime ||
+            season.totalPoints == 0
+        ) {
             return (0, 0);
         }
 
@@ -260,6 +274,11 @@ contract Season is ISeason {
         ready
         returns (uint256, uint256)
     {
+        // Do not unstake and claim if not in claim period
+        if (block.timestamp < endTime) {
+            return (0, 0);
+        }
+
         return _unstake(userAddress);
     }
 
@@ -305,7 +324,9 @@ contract Season is ISeason {
      * @dev creates the final snapshot of rewards totals entitled to the
      *      stakers of this period. This only happens once at the end of the
      *      season.  This constitutes the full amount of rewards for this
-     *      season.
+     *      season.  WARNING: This should not be called before endTime or a
+     *      snapshot will be taken and frozen too early, leaving rewards on
+     *      the table.
      */
     function _snapshot() internal {
         address vault = series.vault();
@@ -387,7 +408,7 @@ contract Season is ISeason {
 
     /**
      * @dev Claim and return amounts of ETH profit share and OGN rewards
-     *      entitled to the user
+     *      entitled to the user.
      *
      * @param userPoints - a user's points to use for rewards calculation
      * @return userRewardETH - Amount of ETH share a user is entitled to
@@ -402,7 +423,7 @@ contract Season is ISeason {
         }
 
         // Get final rewards totals
-        if (!season.snapshotTaken) {
+        if (!season.snapshotTaken && block.timestamp >= endTime) {
             _snapshot();
         }
 

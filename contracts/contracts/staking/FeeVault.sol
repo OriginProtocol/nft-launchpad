@@ -133,7 +133,7 @@ contract FeeVault is Initializable, Governable, PausableUpgradeable, IFeeVault {
 
     /**
      * @dev Send token rewards to a user. Can only be called by controller.
-     * @param tokenAddress - address of the token to recover
+     * @param tokenAddress - address of the token to send
      * @param userAddress - address of the recipient of the tokens
      * @param amount - amount of the token to send
      */

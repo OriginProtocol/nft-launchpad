@@ -5,11 +5,10 @@ const { deployWithConfirmation } = require('../../utils/deploy')
 const { stakingFixture } = require('../_fixture')
 const {
   ONE_DAY,
-  ONE_ETH,
   ONE_THOUSAND_OGN,
-  ZERO_ADDRESS,
   blockStamp,
   expectSuccess,
+  mineBlocks,
   mineUntilTime,
   loadFixture,
   randomAddress,
@@ -271,5 +270,62 @@ describe('Season', () => {
     await expect(
       season.pointsInTime(ONE_THOUSAND_OGN, crazyStamp)
     ).to.be.revertedWith('Season: Points overflow')
+  })
+
+  it('returns rollover points before bootstrap', async function () {
+    const startTime = (await fixture.seasonOne.endTime()) + 60 * 60
+    const lockStartTime = startTime + ONE_DAY
+    const endTime = startTime + ONE_DAY * 2
+    const claimEndTime = startTime + ONE_DAY * 3
+
+    // Stake in S1
+    await fixture.userStake(fixture.users.alice)
+    // Deploy another season that will get no stakes
+    const season = await deployUnique('Season', [
+      fixture.series.address,
+      startTime,
+      lockStartTime,
+      endTime,
+      claimEndTime
+    ])
+    await expectSuccess(fixture.series.pushSeason(season.address))
+
+    await mineUntilTime(startTime)
+    await mineBlocks(1)
+
+    const meta = await season.season()
+    expect(meta.bootstrapped).to.be.false
+
+    const expected = await season.pointsInTime(ONE_THOUSAND_OGN, startTime)
+    expect(await season.getTotalPoints()).to.equal(expected)
+  })
+
+  it('does not revert when expectedRewards() called with no totalPoints', async function () {
+    const startTime = (await fixture.seasonOne.endTime()) + 60 * 60
+    const lockStartTime = startTime + ONE_DAY
+    const endTime = startTime + ONE_DAY * 2
+    const claimEndTime = startTime + ONE_DAY * 3
+
+    // Stake in S1
+    await fixture.userStake(fixture.users.alice)
+    // Deploy another season that will get no stakes
+    const season = await deployUnique('Season', [
+      fixture.series.address,
+      startTime,
+      lockStartTime,
+      endTime,
+      claimEndTime
+    ])
+    await expectSuccess(fixture.series.pushSeason(season.address))
+
+    await mineUntilTime(endTime)
+    await mineBlocks(1)
+
+    const [ethShare, ognRewards] = await season.expectedRewards(
+      fixture.users.alice.address
+    )
+
+    expect(ethShare).to.equal(0)
+    expect(ognRewards).to.equal(0)
   })
 })
