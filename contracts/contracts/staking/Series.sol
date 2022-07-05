@@ -42,6 +42,16 @@ interface ISeries {
 
     function vault() external view returns (address);
 
+    function currentClaimingIndex() external view returns (uint256);
+
+    function currentStakingIndex() external view returns (uint256);
+
+    function liveSeason() external view returns (uint256);
+
+    function expectedClaimingSeason() external view returns (address);
+
+    function expectedStakingSeason() external view returns (address);
+
     function latestStakeTime(address userAddress)
         external
         view
@@ -51,7 +61,7 @@ interface ISeries {
 
     function totalSupply() external view returns (uint256);
 
-    function claim(address userAddress) external returns (uint256, uint256);
+    function claim() external returns (uint256, uint256);
 
     function stake(uint256 amount) external returns (uint256, uint256);
 
@@ -72,9 +82,9 @@ contract Series is Initializable, Governable, ISeries {
     address public override ogn;
 
     address[] public seasons;
-    uint256 public currentStakingIndex;
-    uint256 public currentClaimingIndex;
-    uint256 public totalStakedOGN;
+    uint256 public override currentStakingIndex;
+    uint256 public override currentClaimingIndex;
+    uint256 private totalStakedOGN;
 
     mapping(address => uint256) private stakedOGN;
     mapping(address => uint256) private userLastStakingTime;
@@ -119,6 +129,70 @@ contract Series is Initializable, Governable, ISeries {
     ///
     /// Externals
     ///
+
+    /**
+     * @notice The current "live" season (earliest non-ended season)
+     * @return index of the live season
+     */
+    function liveSeason() external view override returns (uint256) {
+        if (seasons.length <= 1) {
+            return 0;
+        }
+
+        for (uint256 i = seasons.length; i > 0; i--) {
+            uint256 idx = i - 1;
+
+            if (block.timestamp >= ISeason(seasons[idx]).startTime()) {
+                return idx;
+            }
+        }
+
+        return currentStakingIndex;
+    }
+
+    /**
+     * @notice The staking season, should stake() be called.  This takes into
+     * account currentStakingIndex potentially advancing.
+     * @return address of the expected claiming season
+     */
+    function expectedStakingSeason() external view override returns (address) {
+        if (seasons.length < 1) {
+            return address(0);
+        }
+
+        ISeason season = ISeason(seasons[currentStakingIndex]);
+
+        if (
+            block.timestamp >= season.lockStartTime() &&
+            seasons.length > currentStakingIndex + 1
+        ) {
+            return seasons[currentStakingIndex + 1];
+        }
+
+        return seasons[currentStakingIndex];
+    }
+
+    /**
+     * @notice The claiming season, should claim/unstake be called.  This
+     * takes into account currentClaimingIndex potentially advancing.
+     * @return address of the expected claiming season
+     */
+    function expectedClaimingSeason() external view override returns (address) {
+        if (seasons.length < 1) {
+            return address(0);
+        }
+
+        ISeason season = ISeason(seasons[currentClaimingIndex]);
+
+        if (
+            block.timestamp >= season.claimEndTime() &&
+            seasons.length > currentClaimingIndex + 1
+        ) {
+            return seasons[currentClaimingIndex + 1];
+        }
+
+        return seasons[currentClaimingIndex];
+    }
 
     /**
      * @notice Get the latest stake block timestamp for a user
@@ -259,18 +333,18 @@ contract Series is Initializable, Governable, ISeries {
     }
 
     /**
-     * @notice Claim profit share and OGN rewards for a user.
+     * @notice Claim profit share and OGN rewards.
      *
-     * @param userAddress - address of the staked user to claim rewards for
      * @return claimedETH - amount of ETH profit share claimed
      * @return claimedOGN - amount of OGN rewards claimed
      */
-    function claim(address userAddress)
+    function claim()
         external
         override
         requireActiveSeason
         returns (uint256, uint256)
     {
+        address userAddress = msg.sender;
         ISeason season = _acquireClaimingSeason();
 
         (uint256 rewardETH, uint256 rewardOGN) = season.claim(userAddress);
