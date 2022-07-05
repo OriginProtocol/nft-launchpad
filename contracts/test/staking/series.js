@@ -448,4 +448,26 @@ describe('Series', () => {
     const indexed = await fixture.series.seasons(index + 1)
     expect(expected).to.equal(indexed)
   })
+
+  it('can not manually bootstrap a season that does not exist', async function () {
+    await deployWithConfirmation('ZeroSeasonSeries', [], 'Series')
+    const seriesImpl = await ethers.getContract('ZeroSeasonSeries')
+
+    await expect(seriesImpl.bootstrapSeason(0, 123456789)).to.revertedWith(
+      'Series: Season does not exist'
+    )
+  })
+
+  it('can not manually bootstrap a season that has already been bootstrapped', async function () {
+    await mineUntilTime(await fixture.seasonOne.lockStartTime())
+    await expect(fixture.series.bootstrapSeason(0, 123456789)).to.revertedWith(
+      'Season: Already bootstrapped'
+    )
+  })
+
+  it('can not bootstrap a season that has not reached lock period', async function () {
+    await expect(fixture.series.bootstrapSeason(0, 123456789)).to.revertedWith(
+      'Series: Not locked'
+    )
+  })
 })

@@ -926,4 +926,87 @@ describe('Staking Scenarios', () => {
       ).to.equal(totalRewards.div(2))
     })
   })
+
+  describe('No stakes in season two', () => {
+    const totalRewards = ONE_ETH.mul(3)
+    let fixture,
+      snapshotID,
+      users = {
+        alice: null,
+        bob: null,
+        charlie: null,
+        diana: null,
+        elaine: null
+      },
+      userStake
+
+    before(async function () {
+      snapshotID = await snapshot()
+      await deployments.fixture()
+
+      fixture = await loadFixture(stakingFixture)
+      users = fixture.users
+      userStake = fixture.userStake
+    })
+
+    after(async function () {
+      await rollback(snapshotID)
+    })
+
+    it('lets alice stakes', async function () {
+      await userStake(users.alice)
+      await mineBlocks(100)
+    })
+
+    it('lets bob stake', async function () {
+      await userStake(users.bob)
+      await mineBlocks(100)
+    })
+
+    it('Season one ends and season two should entered lock period', async function () {
+      // Setup SeasonTwo
+      await expectSuccess(
+        fixture.series
+          .connect(fixture.deployer)
+          .pushSeason(fixture.seasonTwo.address)
+      )
+
+      // Drop some rewards
+      await expectSuccess(
+        fixture.master.sendTransaction({
+          to: fixture.feeVault.address,
+          value: totalRewards
+        })
+      )
+
+      // SeasonTwo is over
+      await mineUntilTime((await fixture.seasonTwo.endTime()).add(60 * 60))
+    })
+
+    it('lets fails when bob tries to unstake on Season two', async function () {
+      expect(await fixture.series.currentClaimingIndex()).to.equal(0)
+      const beforeBalance = await users.bob.signer.getBalance()
+      expect(await fixture.seasonTwo.getPoints(users.bob.address)).to.be.above(
+        0
+      )
+      expect(await fixture.series.balanceOf(users.bob.address)).to.equal(
+        ONE_THOUSAND_OGN
+      )
+      await expect(
+        fixture.series.connect(users.bob.signer).unstake()
+      ).to.be.revertedWith('Season: Season not bootstrapped.')
+    })
+
+    it('allows governor to bootstrap season', async function () {
+      // In our case, totalSupply is good but in the real world, probably not
+      const totalStaked = await fixture.series.totalSupply()
+      await expectSuccess(
+        fixture.series.connect(fixture.deployer).bootstrapSeason(1, totalStaked)
+      )
+    })
+
+    it('allows bob to unstake', async function () {
+      await expectSuccess(fixture.series.connect(users.bob.signer).unstake())
+    })
+  })
 })

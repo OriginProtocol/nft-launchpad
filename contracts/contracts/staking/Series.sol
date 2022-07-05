@@ -70,6 +70,8 @@ interface ISeries {
     function popSeason() external;
 
     function pushSeason(address season) external;
+
+    function bootstrapSeason(uint256 seasonIndex, uint256 totalStaked) external;
 }
 
 /**
@@ -413,6 +415,30 @@ contract Series is Initializable, Governable, ISeries {
         seasons.pop();
 
         emit SeasonCancelled(cancelled);
+    }
+
+    /**
+     * @notice Manually bootstrap a season.  This should only be used in the
+     *      rare case a season receives no new stakes, so was never
+     *      bootstraped.
+     * @param totalStaked - The amount of totalStakedOGN to send to
+     *      Season.bootstrap()
+     */
+    function bootstrapSeason(uint256 seasonIndex, uint256 totalStaked)
+        external
+        override
+        onlyGovernor
+    {
+        require(seasonIndex < seasons.length, 'Series: Season does not exist');
+
+        ISeason season = ISeason(seasons[seasonIndex]);
+
+        require(
+            block.timestamp >= season.lockStartTime(),
+            'Series: Not locked'
+        );
+
+        season.bootstrap(totalStaked);
     }
 
     ///
