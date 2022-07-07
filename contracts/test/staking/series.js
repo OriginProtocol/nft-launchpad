@@ -106,7 +106,11 @@ describe('Series', () => {
     )
   })
 
-  it('can not set Vault implementation to zero address', async function () {
+  it('can set Vault address', async function () {
+    await expectSuccess(fixture.series.setVault(randomAddress()))
+  })
+
+  it('can not set Vault address to zero address', async function () {
     await expect(fixture.series.setVault(ZERO_ADDRESS)).to.be.revertedWith(
       'Series: Zero address: FeeVault'
     )

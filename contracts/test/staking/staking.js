@@ -978,14 +978,27 @@ describe('Staking Scenarios', () => {
           value: totalRewards
         })
       )
-
-      // SeasonTwo is over
-      await mineUntilTime((await fixture.seasonTwo.endTime()).add(60 * 60))
     })
 
-    it('lets fails when bob tries to unstake on Season two', async function () {
+    it('lets alice unstake on SeasonTwo', async function () {
+      // SeasonOne is past claim time
+      await mineUntilTime(await fixture.seasonOne.claimEndTime())
+
       expect(await fixture.series.currentClaimingIndex()).to.equal(0)
-      const beforeBalance = await users.bob.signer.getBalance()
+      expect(
+        await fixture.seasonTwo.getPoints(users.alice.address)
+      ).to.be.above(0)
+      expect(await fixture.series.balanceOf(users.alice.address)).to.equal(
+        ONE_THOUSAND_OGN
+      )
+      await expectSuccess(fixture.series.connect(users.alice.signer).unstake())
+      expect(await fixture.series.currentClaimingIndex()).to.equal(1)
+    })
+
+    it('fails when bob tries to unstake on SeasonTwo', async function () {
+      // SeasonTwo is over
+      await mineUntilTime((await fixture.seasonTwo.endTime()).add(60 * 60))
+
       expect(await fixture.seasonTwo.getPoints(users.bob.address)).to.be.above(
         0
       )
@@ -994,7 +1007,7 @@ describe('Staking Scenarios', () => {
       )
       await expect(
         fixture.series.connect(users.bob.signer).unstake()
-      ).to.be.revertedWith('Season: Season not bootstrapped.')
+      ).to.be.revertedWith('Season: Not bootstrapped.')
     })
 
     it('allows governor to bootstrap season', async function () {

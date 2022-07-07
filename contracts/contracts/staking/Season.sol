@@ -119,13 +119,6 @@ contract Season is ISeason {
         require(claimEndTime_ > endTime_, 'Season: Invalid claimEndTime');
     }
 
-    // @dev only execute if season has been bootstrapped and is ready to go
-    modifier ready() {
-        // This should have been done before we got here
-        require(season.bootstrapped, 'Season: Season not bootstrapped.');
-        _;
-    }
-
     // @dev only execute if sender is the Series contract
     modifier onlySeries() {
         require(msg.sender == address(series), 'Season: Not series contract');
@@ -237,10 +230,11 @@ contract Season is ISeason {
         external
         override
         onlySeries
-        ready
         returns (uint128)
     {
         require(amount > 0, 'Season: No incoming OGN');
+        // Bootstrapping should have happened before we got here
+        require(season.bootstrapped, 'Season: Season not bootstrapped.');
 
         // calculate stake points
         uint128 points = _pointsInTime(amount, block.timestamp);
@@ -271,7 +265,6 @@ contract Season is ISeason {
         external
         override
         onlySeries
-        ready
         returns (uint256, uint256)
     {
         // Do not unstake and claim if not in claim period
@@ -283,7 +276,7 @@ contract Season is ISeason {
     }
 
     /**
-     * @notice Claculate and return  ETH profit share and OGN rewards and zero
+     * @notice Calculate and return  ETH profit share and OGN rewards and zero
      *      out the user's stake points.
      *
      * @param userAddress - the user staking their OGN
@@ -294,7 +287,6 @@ contract Season is ISeason {
         external
         override
         onlySeries
-        ready
         returns (uint256, uint256)
     {
         return _unstake(userAddress);
@@ -349,6 +341,15 @@ contract Season is ISeason {
      * @return Amount of OGN entitlement
      */
     function _unstake(address userAddress) internal returns (uint256, uint256) {
+        if (!season.bootstrapped) {
+            // Unable to calculate rewards because we aren't bootstrapped
+            require(block.timestamp < endTime, 'Season: Not bootstrapped.');
+
+            // Nothing to unstake, no rewards to give. Season can still be
+            // bootstrapped by Series with a new stake.
+            return (0, 0);
+        }
+
         User memory user = _initMemUser(userAddress);
 
         uint256 rewardETH = 0;

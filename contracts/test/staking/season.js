@@ -152,7 +152,7 @@ describe('Season', () => {
     ).to.be.revertedWith('Season: Season not bootstrapped.')
   })
 
-  it('can not unstake before bootstrap', async function () {
+  it('can unstake before bootstrap if not ended', async function () {
     const startTime = (await blockStamp()) + 60 * 60
     const seriesAddress = await fakeSeries.getAddress()
     const season = await deployUnique('Season', [
@@ -162,13 +162,28 @@ describe('Season', () => {
       startTime + 2,
       startTime + 3
     ])
+
+    await expectSuccess(season.connect(fakeSeries).unstake(randomAddress()))
+  })
+
+  it('can not unstake before bootstrap after ended', async function () {
+    const startTime = (await blockStamp()) + 60 * 60
+    const seriesAddress = await fakeSeries.getAddress()
+    const season = await deployUnique('Season', [
+      seriesAddress,
+      startTime,
+      startTime + 1,
+      startTime + 2,
+      startTime + 3
+    ])
+    await mineUntilTime(startTime + 2)
 
     await expect(
       season.connect(fakeSeries).unstake(randomAddress())
-    ).to.be.revertedWith('Season: Season not bootstrapped.')
+    ).to.be.revertedWith('Season: Not bootstrapped.')
   })
 
-  it('can not claim before bootstrap', async function () {
+  it('can claim before bootstrap if not ended', async function () {
     const startTime = (await blockStamp()) + 60 * 60
     const seriesAddress = await fakeSeries.getAddress()
     const season = await deployUnique('Season', [
@@ -179,9 +194,24 @@ describe('Season', () => {
       startTime + 3
     ])
 
+    await expectSuccess(season.connect(fakeSeries).claim(randomAddress()))
+  })
+
+  it('can not claim before bootstrap after ended', async function () {
+    const startTime = (await blockStamp()) + 60 * 60
+    const seriesAddress = await fakeSeries.getAddress()
+    const season = await deployUnique('Season', [
+      seriesAddress,
+      startTime,
+      startTime + 1,
+      startTime + 2,
+      startTime + 3
+    ])
+    await mineUntilTime(startTime + 2)
+
     await expect(
       season.connect(fakeSeries).claim(randomAddress())
-    ).to.be.revertedWith('Season: Season not bootstrapped.')
+    ).to.be.revertedWith('Season: Not bootstrapped.')
   })
 
   it('calculates points at start', async function () {

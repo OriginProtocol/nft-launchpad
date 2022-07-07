@@ -1,9 +1,8 @@
 const hre = require('hardhat')
 
-const { deployWithConfirmation } = require('../utils/deploy')
+const { deployWithConfirmation, withConfirmation } = require('../utils/deploy')
 
-const isKovan = hre.network.name === 'kovan'
-const isRinkeby = hre.network.name === 'rinkeby'
+const isTest = hre.network.name === 'hardhat'
 const isMainnet = hre.network.name === 'mainnet'
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 const ONE_DAY = 60 * 60 * 24
@@ -17,7 +16,7 @@ const deployContracts = async () => {
   const deployer = await ethers.provider.getSigner(deployerAddr)
 
   let ognAddress
-  if (isKovan || isRinkeby || isMainnet) {
+  if (isMainnet) {
     // TODO: Update for mainnet deployment
     throw new Error('Not Implemented')
   } else {
@@ -53,8 +52,16 @@ const deployContracts = async () => {
   console.log(`Series deployed to ${seriesProxy.address}`)
 
   // Introductions
-  await series.connect(deployer).setVault(feeVaultProxy.address)
-  await feeVault.connect(deployer).setController(series.address)
+  if ((await series.vault()) != feeVaultProxy.address) {
+    await withConfirmation(
+      series.connect(deployer).setVault(feeVaultProxy.address)
+    )
+  }
+  if ((await feeVault.controller()) != series.address) {
+    await withConfirmation(
+      feeVault.connect(deployer).setController(series.address)
+    )
+  }
 
   const block = await ethers.provider.getBlock()
   const seasonOneStartTime = block.timestamp + ONE_DAY
@@ -62,11 +69,6 @@ const deployContracts = async () => {
   const seasonOneEndTime = seasonOneStartTime + ONE_HUNDRED_TWENTY_DAYS
   const seasonOneClaimEnd =
     seasonOneStartTime + ONE_HUNDRED_TWENTY_DAYS + THIRTY_DAYS
-  const seasonTwoStartTime = seasonOneEndTime
-  const seasonTwoLockStartTime = seasonTwoStartTime + NINETY_DAYS
-  const seasonTwoEndTime = seasonTwoStartTime + ONE_HUNDRED_TWENTY_DAYS
-  const seasonTwoClaimEnd =
-    seasonTwoStartTime + ONE_HUNDRED_TWENTY_DAYS + THIRTY_DAYS
 
   await deployWithConfirmation(
     'SeasonOne',
@@ -80,25 +82,33 @@ const deployContracts = async () => {
     'Season'
   )
 
-  await deployWithConfirmation(
-    'SeasonTwo',
-    [
-      series.address,
-      seasonTwoStartTime,
-      seasonTwoLockStartTime,
-      seasonTwoEndTime,
-      seasonTwoClaimEnd
-    ],
-    'Season'
-  )
-
   const seasonOne = await hre.ethers.getContract('SeasonOne')
-  const seasonTwo = await hre.ethers.getContract('SeasonTwo')
   console.log(`SeasonOne deployed to ${seasonOne.address}`)
-  console.log(`SeasonTwo deployed to ${seasonTwo.address}`)
+
+  if (isTest) {
+    const seasonTwoStartTime = seasonOneEndTime
+    const seasonTwoLockStartTime = seasonTwoStartTime + NINETY_DAYS
+    const seasonTwoEndTime = seasonTwoStartTime + ONE_HUNDRED_TWENTY_DAYS
+    const seasonTwoClaimEnd =
+      seasonTwoStartTime + ONE_HUNDRED_TWENTY_DAYS + THIRTY_DAYS
+
+    await deployWithConfirmation(
+      'SeasonTwo',
+      [
+        series.address,
+        seasonTwoStartTime,
+        seasonTwoLockStartTime,
+        seasonTwoEndTime,
+        seasonTwoClaimEnd
+      ],
+      'Season'
+    )
+    const seasonTwo = await hre.ethers.getContract('SeasonTwo')
+    console.log(`SeasonTwo deployed to ${seasonTwo.address}`)
+  }
 
   // Make sure there's an active season
-  await series.connect(deployer).pushSeason(seasonOne.address)
+  await withConfirmation(series.connect(deployer).pushSeason(seasonOne.address))
 
   console.log('007_staking deployment complete.')
 
@@ -107,6 +117,5 @@ const deployContracts = async () => {
 
 deployContracts.id = '007_staking'
 deployContracts.tags = ['staking']
-deployContracts.skip = () => isKovan || isRinkeby || isMainnet
 
 module.exports = deployContracts
