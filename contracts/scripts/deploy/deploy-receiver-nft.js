@@ -173,7 +173,7 @@ async function main() {
   const numConfirmations = config.confirmations || 2
   console.log(`Using ${numConfirmations} confirmations`)
 
-  if (!['goerli', 'mainnet'].includes(config.network)) {
+  if (!['goerli', 'mainnet', 'rinkeby'].includes(config.network)) {
     throw new Error(
       `Invalid network ${config.network} - Only goerly and mainnet supported`
     )
