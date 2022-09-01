@@ -1,5 +1,12 @@
+import { expect } from 'chai'
+import { ethers } from 'hardhat'
+
+import { getMintSignature } from 'common/src/getMintSignature'
+
+const { deployWithConfirmation } = require('../utils/deploy')
 import {
   ONE_ETH,
+  ZERO_ADDRESS,
   expectSuccess,
   funcSig,
   getInterfaceID,
@@ -7,9 +14,6 @@ import {
   randomAddress
 } from './helpers'
 import { defaultFixture } from './_fixture'
-import { expect } from 'chai'
-import { getMintSignature } from 'common/src/getMintSignature'
-import { ethers } from 'hardhat'
 
 const ROLE_DEFAULT_ADMIN_ROLE =
   '0x0000000000000000000000000000000000000000000000000000000000000000'
@@ -17,7 +21,7 @@ const ROLE_MINTER = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('MINTER'))
 
 describe('OriginERC721a_v3', () => {
   describe('Token with limited supply of 10', () => {
-    let owner, minter, mockOUSD, token, chainId
+    let owner, minter, token, chainId
     const baseURI = 'https://nft.origin.eth/nft/721a/'
 
     before(async () => {
@@ -26,6 +30,50 @@ describe('OriginERC721a_v3', () => {
       minter = master
       owner = deployer
       chainId = (await ethers.provider.getNetwork()).chainId
+    })
+
+    it('reverts if deployed without max supply', async () => {
+      const alice = randomAddress()
+      const bob = randomAddress()
+      await expect(
+        deployWithConfirmation(
+          'OriginERC721a_v3BadSupply',
+          [
+            'Sevent Twenty One Ay Vee Three',
+            '721Av3',
+            'https://nft.origin.eth/nft/721av3/',
+            0,
+            alice,
+            [alice, bob],
+            [50, 50],
+            1000 // 10% royalty
+          ],
+          'OriginERC721a_v3'
+        )
+      ).to.be.revertedWith('Max supply not set')
+    })
+
+    it('sets up minter as deployer if unset', async () => {
+      const { deployerAddr } = await getNamedAccounts()
+      await deployWithConfirmation(
+        'OriginERC721a_v3UnsetMinter',
+        [
+          'Sevent Twenty One Ay Vee Three',
+          '721Av3',
+          'https://nft.origin.eth/nft/721av3/',
+          10,
+          ZERO_ADDRESS,
+          [randomAddress()],
+          [50],
+          1000 // 10% royalty
+        ],
+        'OriginERC721a_v3'
+      )
+      const contract = await hre.ethers.getContract(
+        'OriginERC721a_v3UnsetMinter'
+      )
+      const MINTER_ROLE = await contract.MINTER_ROLE()
+      expect(await contract.hasRole(MINTER_ROLE, deployerAddr)).to.be.true
     })
 
     it('confirms supported interfaces', async () => {

@@ -17,7 +17,7 @@ import 'hardhat-deploy-ethers'
 import 'hardhat-gas-reporter'
 import 'solidity-coverage'
 import { task } from 'hardhat/config'
-import { BuildInfo } from 'hardhat/types'
+import { BuildInfo, HardhatUserConfig } from 'hardhat/types'
 import { CompilerOutput } from 'hardhat/src/types/artifacts'
 
 const PROVIDER_URL = process.env.PROVIDER_URL || 'http://localhost:8545'
@@ -105,12 +105,16 @@ module.exports = {
   },
   networks: {
     hardhat: {
+      mining: process.env.HARDHAT_MINE === 'true' ? {
+        auto: true,
+        interval: 15000,
+      } : undefined,
       accounts: {
         mnemonic,
         count: 200
       },
       hardfork: 'arrowGlacier',
-      initialBaseFeePerGas: '1000000000',
+      initialBaseFeePerGas: 1000000000,
       chainId: 31337
     },
     rinkeby: {
@@ -122,14 +126,6 @@ module.exports = {
       accounts: privateKeys.slice(0, 2)
     },
     mainnet: {
-      url: PROVIDER_URL,
-      accounts: privateKeys.slice(0, 2)
-    },
-    bsc_mainnet: {
-      url: PROVIDER_URL,
-      accounts: privateKeys.slice(0, 2)
-    },
-    bsc_testnet: {
       url: PROVIDER_URL,
       accounts: privateKeys.slice(0, 2)
     },
@@ -174,6 +170,6 @@ module.exports = {
     artifacts: './artifacts'
   },
   gasReporter: {
-    enabled: !!process.env.REPORT_GAS ? true : false
+    enabled: !!process.env.REPORT_GAS
   }
-}
+} as HardhatUserConfig

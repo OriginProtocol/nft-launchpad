@@ -73,7 +73,7 @@ contract OriginERC721a_v3 is PaymentSplitter, AccessControl, IERC2981, ERC721A {
         uint256[] memory shares_,
         uint256 royaltyBps_
     ) ERC721A(name_, symbol_) PaymentSplitter(payees_, shares_) {
-        require(maxSupply_ > 0);
+        require(maxSupply_ > 0, 'Max supply not set');
         baseURI = baseURI_;
         maxSupply = maxSupply_;
         royaltyBps = royaltyBps_;

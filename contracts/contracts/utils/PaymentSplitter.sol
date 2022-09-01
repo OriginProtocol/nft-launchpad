@@ -62,7 +62,7 @@ contract PaymentSplitter is Context {
     constructor(address[] memory payees, uint256[] memory shares_) payable {
         require(
             payees.length == shares_.length,
-            'PaymentSplitter: payees and shares length mismatch'
+            'PaymentSplitter: length mismatch'
         );
         require(payees.length > 0, 'PaymentSplitter: no payees');
 
@@ -144,7 +144,7 @@ contract PaymentSplitter is Context {
      * total shares and their previous withdrawals.
      */
     function release(address payable account) public virtual {
-        require(_shares[account] > 0, 'PaymentSplitter: account has no shares');
+        require(_shares[account] > 0, 'PaymentSplitter: no shares');
 
         uint256 totalReceived = address(this).balance + totalReleased();
         uint256 payment = _pendingPayment(
@@ -153,7 +153,7 @@ contract PaymentSplitter is Context {
             released(account)
         );
 
-        require(payment != 0, 'PaymentSplitter: account is not due payment');
+        require(payment != 0, 'PaymentSplitter: not due payment');
 
         _released[account] += payment;
         _totalReleased += payment;
@@ -168,7 +168,7 @@ contract PaymentSplitter is Context {
      * contract.
      */
     function release(IERC20 token, address account) public virtual {
-        require(_shares[account] > 0, 'PaymentSplitter: account has no shares');
+        require(_shares[account] > 0, 'PaymentSplitter: no shares');
 
         uint256 totalReceived = token.balanceOf(address(this)) +
             totalReleased(token);
@@ -178,7 +178,7 @@ contract PaymentSplitter is Context {
             released(token, account)
         );
 
-        require(payment != 0, 'PaymentSplitter: account is not due payment');
+        require(payment != 0, 'PaymentSplitter: not due payment');
 
         _erc20Released[token][account] += payment;
         _erc20TotalReleased[token] += payment;
@@ -241,15 +241,9 @@ contract PaymentSplitter is Context {
      * @param shares_ The number of shares owned by the payee.
      */
     function _addPayee(address account, uint256 shares_) private {
-        require(
-            account != address(0),
-            'PaymentSplitter: account is the zero address'
-        );
+        require(account != address(0), 'PaymentSplitter: zero address');
         require(shares_ > 0, 'PaymentSplitter: shares are 0');
-        require(
-            _shares[account] == 0,
-            'PaymentSplitter: account already has shares'
-        );
+        require(_shares[account] == 0, 'PaymentSplitter: has shares');
 
         _payees.push(account);
         _shares[account] = shares_;

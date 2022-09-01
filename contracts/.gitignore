@@ -5,3 +5,6 @@ cache
 artifacts
 deployments/localhost
 # network.json
+# Ape/python files
+.build
+__pycache__

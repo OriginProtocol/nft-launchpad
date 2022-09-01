@@ -1616,7 +1616,7 @@
       ]
     },
     "Series": {
-      "address": "0x059FaaBA3ac3dE17f1866A856Ba6f95FF1bb1D46",
+      "address": "0x5fcb9341E48f12C8BDF4898312596A79788D6101",
       "abi": [
         {
           "anonymous": false,
@@ -2054,7 +2054,7 @@
       ]
     },
     "SeriesProxy": {
-      "address": "0xa752f7C75aFa9eAb3a4DA1E66DE7b0971e5bF9bA",
+      "address": "0xcFE44b7c64a6794B57eeB6b52cd5ae98CDc5B0B5",
       "abi": [
         {
           "inputs": [
@@ -2274,7 +2274,7 @@
       ]
     },
     "SeasonOne": {
-      "address": "0x57074bC60eAB0E4fAB51D9aBDFBa6Edcbe7231F0",
+      "address": "0xd34cD8D7C9400286B695C9F846c8c100ae439B34",
       "abi": [
         {
           "inputs": [

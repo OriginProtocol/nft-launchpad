@@ -26,7 +26,7 @@
     "solhint": "^3.3.7",
     "solidity-coverage": "^0.7.21",
     "ts-node": "^10.7.0",
-    "typescript": "^4.6.2"
+    "typescript": "^4.7.4"
   },
   "scripts": {
     "start": "hardhat node --export './network.json'",

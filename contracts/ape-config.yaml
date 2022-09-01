@@ -1,0 +1,23 @@
+solidity:
+  import_remapping:
+    - "@openzeppelin=OpenZeppelin/4.4.2"
+
+ethereum:
+  default_network: local
+  local:
+    default_provider: geth
+
+geth:
+  ethereum:
+    local:
+      uri: http://localhost:8545
+
+hardhat:
+  fork:
+    ethereum:
+      mainnet:
+        upstream_provider: geth
+
+test:
+  mnemonic: test test test test test test test test test test test junk
+  number_of_accounts: 5

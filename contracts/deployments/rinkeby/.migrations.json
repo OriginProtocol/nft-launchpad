@@ -2,5 +2,6 @@
   "001_ingest": 1629901879,
   "004_ingest_update": 1629902013,
   "005_nftv3": 1635209687,
-  "007_staking": 1657065879
+  "007_staking": 1657221436,
+  "008_init_implementations": 1659550367
 }

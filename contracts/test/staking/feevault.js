@@ -129,6 +129,7 @@ describe('FeeVault', () => {
     const deployerAddress = await fixture.deployer.getAddress()
     //await fixture.fundOGN(fixture.feeVault.address, ONE_THOUSAND_OGN)
     // Leftover rewards from previous test
+    const initialBalance = await fixture.mockOGN.balanceOf(deployerAddress)
     expect(await fixture.mockOGN.balanceOf(fixture.feeVault.address)).to.equal(
       ONE_THOUSAND_OGN.div(2)
     )
@@ -143,7 +144,7 @@ describe('FeeVault', () => {
       0
     )
     expect(await fixture.mockOGN.balanceOf(deployerAddress)).to.equal(
-      ONE_THOUSAND_OGN.div(2)
+      initialBalance.add(ONE_THOUSAND_OGN.div(2))
     )
   })
 
