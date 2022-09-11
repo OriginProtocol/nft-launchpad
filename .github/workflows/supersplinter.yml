@@ -1,0 +1,4 @@
+uses: crytic/echidna-action@v2
+with:
+  files: contracts/
+  contract: Marketplace
