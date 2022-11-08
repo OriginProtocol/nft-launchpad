@@ -181,7 +181,7 @@ async function stakingFixture() {
   const mockOGN = await ethers.getContract('MockOGN')
 
   const seriesProxy = await ethers.getContract('SeriesProxy')
-  const series = await ethers.getContractAt('Series', seriesProxy.address)
+  const series = await ethers.getContractAt('SeriesV2', seriesProxy.address)
 
   const feeVaultProxy = await ethers.getContract('FeeVaultProxy')
   const feeVault = await ethers.getContractAt('FeeVault', feeVaultProxy.address)

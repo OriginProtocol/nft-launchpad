@@ -1,11 +1,12 @@
 const hre = require('hardhat')
 
-const isKovan = hre.network.name === 'kovan'
-const isRinkeby = hre.network.name === 'rinkeby'
-const isMainnet = hre.network.name === 'mainnet'
+const {
+  deployWithConfirmation,
+  isMainnet,
+  isRinkeby
+} = require('../utils/deploy')
 
-const deployMockStable = async ({ getNamedAccounts, deployments }) => {
-  const { deploy } = deployments
+const deployMockStable = async ({ getNamedAccounts }) => {
   const { deployerAddr, masterAddr } = await getNamedAccounts()
 
   console.log('Running 000_contracts deployment...')
@@ -17,10 +18,10 @@ const deployMockStable = async ({ getNamedAccounts, deployments }) => {
   const usdcContractName = 'MockUSDC'
   const usdtContractName = 'MockUSDT'
 
-  await deploy(daiContractName, { from: deployerAddr })
-  await deploy(ousdContractName, { from: deployerAddr })
-  await deploy(usdcContractName, { from: deployerAddr })
-  await deploy(usdtContractName, { from: deployerAddr })
+  await deployWithConfirmation(daiContractName)
+  await deployWithConfirmation(ousdContractName)
+  await deployWithConfirmation(usdcContractName)
+  await deployWithConfirmation(usdtContractName)
 
   const daiContract = await hre.ethers.getContract(daiContractName)
   const ousdContract = await hre.ethers.getContract(ousdContractName)
@@ -38,6 +39,6 @@ const deployMockStable = async ({ getNamedAccounts, deployments }) => {
 
 deployMockStable.id = '001_mock-stable'
 deployMockStable.tags = ['mock stable']
-deployMockStable.skip = () => isKovan || isRinkeby || isMainnet
+deployMockStable.skip = () => isMainnet || isRinkeby
 
 module.exports = deployMockStable

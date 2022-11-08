@@ -105,10 +105,13 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      mining: process.env.HARDHAT_MINE === 'true' ? {
-        auto: true,
-        interval: 15000,
-      } : undefined,
+      mining:
+        process.env.HARDHAT_MINE === 'true'
+          ? {
+              auto: true,
+              interval: 15000
+            }
+          : undefined,
       accounts: {
         mnemonic,
         count: 200

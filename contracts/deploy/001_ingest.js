@@ -2,13 +2,11 @@ const hre = require('hardhat')
 
 const { placeholders } = require('../ingest.config.js')
 const {
+  isPubnet,
   deployWithConfirmation,
   withConfirmation,
   getTxOpts
 } = require('../utils/deploy')
-
-const isRinkeby = hre.network.name === 'rinkeby'
-const isMainnet = hre.network.name === 'mainnet'
 
 const deployContracts = async ({ getNamedAccounts, deployments }) => {
   const { getArtifact } = deployments
@@ -28,19 +26,19 @@ const deployContracts = async ({ getNamedAccounts, deployments }) => {
 
   console.log('Running 001_ingest deployment...')
 
-  if ((isRinkeby || isMainnet) && !process.env.INGEST_POOL_ADDRESS) {
+  if (isPubnet && !process.env.INGEST_POOL_ADDRESS) {
     throw new Error('INGEST_POOL_ADDRESS must be defined')
   }
   const poolAddr = process.env.INGEST_POOL_ADDRESS
   console.log('Using pool address', poolAddr)
 
-  if ((isRinkeby || isMainnet) && !process.env.COLLECTOR_ADDRESS) {
+  if (isPubnet && !process.env.COLLECTOR_ADDRESS) {
     throw new Error('COLLECTOR_ADDRESS must be defined')
   }
   const collectorAddr = process.env.COLLECTOR_ADDRESS
   console.log('Using collector address', collectorAddr)
 
-  if ((isRinkeby || isMainnet) && !process.env.GOVERNOR_ADDRESS) {
+  if (isPubnet && !process.env.GOVERNOR_ADDRESS) {
     throw new Error('GOVERNOR_ADDRESS must be defined')
   }
   const governorAddr = process.env.GOVERNOR_ADDRESS
@@ -105,7 +103,7 @@ const deployContracts = async ({ getNamedAccounts, deployments }) => {
       .setEndpointImplementation(ingestImpl.address, await getTxOpts())
   )
 
-  if (isRinkeby || isMainnet) {
+  if (isPubnet) {
     console.log('IngestMaster: setting collector to', collectorAddr)
     await withConfirmation(
       ingestMaster

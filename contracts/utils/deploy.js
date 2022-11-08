@@ -4,11 +4,15 @@
 
 const hre = require('hardhat')
 
-const isRinkeby = hre.network.name === 'rinkeby'
+const supportedTestnets = ['kovan', 'rinkeby', 'goerli']
+const isHardhat = hre.network.name === 'hardhat'
 const isMainnet = hre.network.name === 'mainnet'
+const isGoerli = hre.network.name === 'goerli'
+const isTestnet = supportedTestnets.includes(hre.network.name)
+const isPubnet = isTestnet || isMainnet
 
 // Wait for 3 blocks confirmation on Mainnet/Rinkeby.
-const NUM_CONFIRMATIONS = isMainnet || isRinkeby ? 3 : 0
+const NUM_CONFIRMATIONS = isPubnet ? 3 : 0
 
 /**
  * Logging method for deployments.
@@ -95,7 +99,12 @@ const withConfirmation = async (deployOrTransactionPromise) => {
  * @param gasLimit
  * @returns {Promise<{receipt}|*>}
  */
-const deployWithConfirmation = async (contractName, args, contract, gasLimit) => {
+const deployWithConfirmation = async (
+  contractName,
+  args,
+  contract,
+  gasLimit
+) => {
   const { deploy } = deployments
   const { deployerAddr } = await getNamedAccounts()
   if (!args) args = null
@@ -118,5 +127,11 @@ module.exports = {
   log,
   getTxOpts,
   deployWithConfirmation,
-  withConfirmation
+  withConfirmation,
+  supportedTestnets,
+  isGoerli,
+  isHardhat,
+  isMainnet,
+  isPubnet,
+  isTestnet
 }

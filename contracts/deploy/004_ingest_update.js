@@ -2,13 +2,12 @@ const hre = require('hardhat')
 
 const { placeholders } = require('../ingest.config.js')
 const {
+  isMainnet,
+  isHardhat,
   deployWithConfirmation,
   withConfirmation,
   getTxOpts
 } = require('../utils/deploy')
-
-const isHardhat = hre.network.name === 'hardhat'
-const isMainnet = hre.network.name === 'mainnet'
 
 const deployContracts = async ({ deployments }) => {
   const { getArtifact } = deployments

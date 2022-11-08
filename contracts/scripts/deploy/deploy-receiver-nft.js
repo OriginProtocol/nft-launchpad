@@ -8,7 +8,7 @@
 //  - Set a higher EIP 1559 tx priority fee based on the value of env var GAS_PRICE_MULTIPLIER.
 //
 // Example of a deploy on ethereum mainnet:
-//   #> heroku run bash -a nft-staging
+//   #> apitask story-demo
 //   #> cd contracts/scripts/deploy
 //   #> node deploy-receiver-nft.js \
 //       --nftContractId 4 \

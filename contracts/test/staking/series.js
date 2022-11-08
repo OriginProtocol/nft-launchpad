@@ -181,11 +181,11 @@ describe('Series', () => {
     const claimEndTime = startTime + 400
 
     await deployWithConfirmation(
-      'SeasonTwo',
+      'SeasonTwoPushTest',
       [fixture.series.address, startTime, lockStartTime, endTime, claimEndTime],
       'Season'
     )
-    const seasonTwo = await ethers.getContract('SeasonTwo')
+    const seasonTwo = await ethers.getContract('SeasonTwoPushTest')
 
     const receipt = await expectSuccess(
       fixture.series.pushSeason(seasonTwo.address)
@@ -472,6 +472,34 @@ describe('Series', () => {
   it('can not bootstrap a season that has not reached lock period', async function () {
     await expect(fixture.series.bootstrapSeason(0, 123456789)).to.revertedWith(
       'Series: Not locked'
+    )
+  })
+
+  // Additions with Series V2
+  it('will let a user unstake if they never staked', async function () {
+    const receipt = await expectSuccess(
+      fixture.series.connect(fixture.users.diana.signer).unstake()
+    )
+    const transferEv = receipt.logs.find(
+      (ev) =>
+        ev.topics[0] ==
+        '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+    )
+    expect(transferEv.data).to.equal(
+      '0x0000000000000000000000000000000000000000000000000000000000000000'
+    )
+  })
+
+  it('will let a user claim if they never staked', async function () {
+    // Run this against SeasonV2
+    await expectSuccess(fixture.series.pushSeason(fixture.seasonTwo.address))
+    await fixture.userStake(fixture.users.alice)
+    await mineUntilTime(await fixture.seasonOne.endTime())
+
+    await fixture.userStake(fixture.users.alice)
+    await mineUntilTime(await fixture.seasonTwo.endTime())
+    await expectSuccess(
+      fixture.series.connect(fixture.users.diana.signer).claim()
     )
   })
 })

@@ -1,12 +1,17 @@
 const hre = require('hardhat')
 
-const { deployWithConfirmation, withConfirmation } = require('../utils/deploy')
+const {
+  isHardhat,
+  isMainnet,
+  deployWithConfirmation,
+  withConfirmation
+} = require('../utils/deploy')
 const { getNamedAccounts } = require('hardhat')
 
-const isTest = hre.network.name === 'hardhat'
-const isMainnet = hre.network.name === 'mainnet'
+const isAggressiveTesting = process.env.AGGRESSIVE_STAKING_TESTING === 'true'
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-const ONE_DAY = 60 * 60 * 24
+const ONE_DAY = isAggressiveTesting ? 2 : 60 * 60 * 24
 const THIRTY_DAYS = ONE_DAY * 30
 const NINETY_DAYS = ONE_DAY * 90
 const ONE_HUNDRED_TWENTY_DAYS = ONE_DAY * 120
@@ -66,7 +71,7 @@ const deployContracts = async () => {
     )
   }
 
-  if (isTest) {
+  if (isHardhat) {
     // Add OGN to named accounts.
     const ogn = await hre.ethers.getContract('MockOGN')
     const namedAccounts = await getNamedAccounts()
@@ -99,28 +104,6 @@ const deployContracts = async () => {
 
   const seasonOne = await hre.ethers.getContract('SeasonOne')
   console.log(`SeasonOne deployed to ${seasonOne.address}`)
-
-  if (isTest) {
-    const seasonTwoStartTime = seasonOneEndTime
-    const seasonTwoLockStartTime = seasonTwoStartTime + NINETY_DAYS
-    const seasonTwoEndTime = seasonTwoStartTime + ONE_HUNDRED_TWENTY_DAYS
-    const seasonTwoClaimEnd =
-      seasonTwoStartTime + ONE_HUNDRED_TWENTY_DAYS + THIRTY_DAYS
-
-    await deployWithConfirmation(
-      'SeasonTwo',
-      [
-        series.address,
-        seasonTwoStartTime,
-        seasonTwoLockStartTime,
-        seasonTwoEndTime,
-        seasonTwoClaimEnd
-      ],
-      'Season'
-    )
-    const seasonTwo = await hre.ethers.getContract('SeasonTwo')
-    console.log(`SeasonTwo deployed to ${seasonTwo.address}`)
-  }
 
   // Make sure there's an active season
   await withConfirmation(series.connect(deployer).pushSeason(seasonOne.address))

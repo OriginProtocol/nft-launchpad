@@ -1,8 +1,6 @@
 const hre = require('hardhat')
 
-const isMainnet = hre.network.name === 'mainnet'
-const isKovan = hre.network.name === 'kovan'
-const isRinkeby = hre.network.name === 'rinkeby'
+const { isPubnet } = require('../utils/deploy')
 
 const deployNFT = async ({ getNamedAccounts, deployments }) => {
   const { deploy } = deployments
@@ -29,6 +27,6 @@ const deployNFT = async ({ getNamedAccounts, deployments }) => {
 
 deployNFT.id = '003_nftv2'
 deployNFT.tags = ['nft']
-deployNFT.skip = () => isMainnet || isKovan || isRinkeby
+deployNFT.skip = () => isPubnet
 
 module.exports = deployNFT
