@@ -1486,19 +1486,22 @@ ERC721A_ABI = [
 def goerli_contracts(web3):
     return {
         "ogn": web3.eth.contract(
-            address="0xE284e3336801A4573D3A82E35Dd6355e763aF3b2", abi=MOCKOGN_ABI
+            address="0xde4E13E34D441415ECc7E30E4d39f97d933801f4", abi=MOCKOGN_ABI
         ),
         "vault": web3.eth.contract(
-            address="0xFFB33c7e8fFdB67740116E99c294eD14A5943683", abi=FEEVAULT_ABI
+            address="0xF149A3E8f6556ce67BB256359a655aE765854aA5", abi=FEEVAULT_ABI
         ),
         "series": web3.eth.contract(
-            address="0x586D135F4204C097493cd8393012A0Fae5898c79", abi=SERIES_ABI
+            address="0xD8cf309416C5B039C7804Cad2c3ED0E338451ba5", abi=SERIES_ABI
         ),
         "season_one": web3.eth.contract(
-            address="0xFD6dD214eB07c7401f50ee9B6A474869F8Ef1Bc8", abi=SEASON_ABI
+            address="0x5f450F4318592c428DfE52e2b0CbCd57591B93dc", abi=SEASON_ABI
         ),
         "season_two": web3.eth.contract(
-            address="0x6a4B6c2f91f3fbBbB9090e4988F735ba0F170912", abi=SEASON_ABI
+            address="0xfDF5BBd2F07178d23F3217882452f5463F04cecD", abi=SEASON_ABI
+        ),
+        "season_three": web3.eth.contract(
+            address="0x0EF91735FF851Ddc6C44801798483B70CC466A15", abi=SEASON_ABI
         ),
     }
 
@@ -1543,6 +1546,9 @@ def mainnet_contracts(web3):
         ),
         "season_two": web3.eth.contract(
             address="0x6639CdB3EA7A48b0aD95B47bEc78023c6F706160", abi=SEASON_ABI
+        ),
+        "season_three": web3.eth.contract(
+            address="0x07B0226465A50300F91c8A7930f90aEcae3D6Ed4", abi=SEASON_ABI
         ),
     }
 

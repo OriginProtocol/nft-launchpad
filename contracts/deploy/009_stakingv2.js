@@ -1,19 +1,19 @@
 const hre = require('hardhat')
 
 const {
+  THIRTY_DAYS,
+  NINETY_DAYS,
+  ONE_HUNDRED_TWENTY_DAYS,
+  isAggressiveTesting,
   isGoerli,
   isHardhat,
   isMainnet,
   deployWithConfirmation,
+  unixNow,
   withConfirmation
 } = require('../utils/deploy')
 const { getNamedAccounts } = require('hardhat')
 
-const isAggressiveTesting = process.env.AGGRESSIVE_STAKING_TESTING === 'true'
-const ONE_DAY = isAggressiveTesting ? 2 : 60 * 60 * 24
-const THIRTY_DAYS = ONE_DAY * 30
-const NINETY_DAYS = ONE_DAY * 90
-const ONE_HUNDRED_TWENTY_DAYS = ONE_DAY * 120
 const ONE_ADDRESS = '0x0000000000000000000000000000000000000001'
 
 const deployContracts = async () => {
@@ -68,7 +68,9 @@ const deployContracts = async () => {
       seasonTwoEndTime,
       seasonTwoClaimEnd
     ],
-    'SeasonV2'
+    isMainnet || seasonTwoStartTime > unixNow()
+      ? 'SeasonV2'
+      : 'SeasonV2_TESTING'
   )
 
   const seasonTwo = await hre.ethers.getContract('SeasonTwo')
@@ -142,7 +144,9 @@ const deployContracts = async () => {
             baseEndTime,
             baseClaimEnd
           ],
-          'Season'
+          isMainnet || baseStartTime > unixNow()
+            ? 'SeasonV2'
+            : 'SeasonV2_TESTING'
         )
         const season = await hre.ethers.getContract(`Season ${i}`)
         console.log(`Season ${i} deployed to ${season.address}`)

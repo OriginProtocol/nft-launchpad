@@ -1,6 +1,7 @@
 // Deployment for the contract OriginERC721_v3Factory.
 
 const hre = require('hardhat')
+const { isGoerli } = require('../utils/deploy')
 
 const deployNFT = async ({ getNamedAccounts, deployments }) => {
   const { deploy } = deployments
@@ -27,5 +28,6 @@ const deployNFT = async ({ getNamedAccounts, deployments }) => {
 
 deployNFT.id = '005_nftv3'
 deployNFT.tags = ['nft']
+deployNFT.skip = () => isGoerli
 
 module.exports = deployNFT

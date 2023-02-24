@@ -1,9 +1,7 @@
 {
-  "001_ingest": 1664926156,
-  "004_ingest_update": 1664926207,
-  "005_nftv3": 1664926227,
-  "007_staking": 1664927511,
-  "008_init_implementations": 1664928615,
-  "001_mock-stable": 1664930462,
-  "009_stakingv2": 1667430316
+  "001_mock-stable": 1676505182,
+  "007_staking": 1676575094,
+  "008_init_implementations": 1676575192,
+  "009_stakingv2": 1676575793,
+  "010_season3": 1676575875
 }

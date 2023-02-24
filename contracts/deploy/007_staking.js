@@ -1,20 +1,20 @@
 const hre = require('hardhat')
 
 const {
+  ONE_DAY,
+  THIRTY_DAYS,
+  NINETY_DAYS,
+  ONE_HUNDRED_TWENTY_DAYS,
+  isGoerli,
   isHardhat,
   isMainnet,
   deployWithConfirmation,
+  unixNow,
   withConfirmation
 } = require('../utils/deploy')
 const { getNamedAccounts } = require('hardhat')
 
-const isAggressiveTesting = process.env.AGGRESSIVE_STAKING_TESTING === 'true'
-
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-const ONE_DAY = isAggressiveTesting ? 2 : 60 * 60 * 24
-const THIRTY_DAYS = ONE_DAY * 30
-const NINETY_DAYS = ONE_DAY * 90
-const ONE_HUNDRED_TWENTY_DAYS = ONE_DAY * 120
 
 const deployContracts = async () => {
   console.log('Running 007_staking deployment...')
@@ -61,11 +61,13 @@ const deployContracts = async () => {
 
   // Introductions
   if ((await series.vault()) != feeVaultProxy.address) {
+    console.log(`Setting vault to ${feeVaultProxy.address}`)
     await withConfirmation(
       series.connect(deployer).setVault(feeVaultProxy.address)
     )
   }
   if ((await feeVault.controller()) != series.address) {
+    console.log(`Setting controller to ${series.address}`)
     await withConfirmation(
       feeVault.connect(deployer).setController(series.address)
     )
@@ -84,7 +86,13 @@ const deployContracts = async () => {
 
   const block = await ethers.provider.getBlock()
   // Mainnet SeasonOne starts on 2022-07-12 00:00:00 UTC
-  const seasonOneStartTime = isMainnet ? 1657584000 : block.timestamp + ONE_DAY
+  let seasonOneStartTime = 1657584000
+  if (isGoerli) {
+    // Have georli lead mainnet by 7 days
+    seasonOneStartTime = seasonOneStartTime - ONE_DAY * 7
+  } else if (!isMainnet) {
+    seasonOneStartTime = block.timestamp + ONE_DAY
+  }
   const seasonOneLockStartTime = seasonOneStartTime + NINETY_DAYS
   const seasonOneEndTime = seasonOneStartTime + ONE_HUNDRED_TWENTY_DAYS
   const seasonOneClaimEnd =
@@ -99,7 +107,7 @@ const deployContracts = async () => {
       seasonOneEndTime,
       seasonOneClaimEnd
     ],
-    'Season'
+    isMainnet || seasonOneStartTime > unixNow() ? 'Season' : 'Season_TESTING'
   )
 
   const seasonOne = await hre.ethers.getContract('SeasonOne')

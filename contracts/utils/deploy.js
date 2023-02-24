@@ -13,6 +13,11 @@ const isPubnet = isTestnet || isMainnet
 
 // Wait for 3 blocks confirmation on Mainnet/Rinkeby.
 const NUM_CONFIRMATIONS = isPubnet ? 3 : 0
+const isAggressiveTesting = process.env.AGGRESSIVE_STAKING_TESTING === 'true'
+const ONE_DAY = isAggressiveTesting ? 2 : 60 * 60 * 24
+const THIRTY_DAYS = ONE_DAY * 30
+const NINETY_DAYS = ONE_DAY * 90
+const ONE_HUNDRED_TWENTY_DAYS = ONE_DAY * 120
 
 /**
  * Logging method for deployments.
@@ -123,15 +128,23 @@ const deployWithConfirmation = async (
   return result
 }
 
+const unixNow = () => Math.floor(Date.now() / 1000)
+
 module.exports = {
+  ONE_DAY,
+  THIRTY_DAYS,
+  NINETY_DAYS,
+  ONE_HUNDRED_TWENTY_DAYS,
   log,
   getTxOpts,
   deployWithConfirmation,
   withConfirmation,
   supportedTestnets,
+  isAggressiveTesting,
   isGoerli,
   isHardhat,
   isMainnet,
   isPubnet,
-  isTestnet
+  isTestnet,
+  unixNow
 }

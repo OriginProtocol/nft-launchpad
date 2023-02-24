@@ -2,8 +2,9 @@ const hre = require('hardhat')
 
 const { placeholders } = require('../ingest.config.js')
 const {
-  isMainnet,
+  isGoerli,
   isHardhat,
+  isMainnet,
   deployWithConfirmation,
   withConfirmation,
   getTxOpts
@@ -69,6 +70,6 @@ const deployContracts = async ({ deployments }) => {
 
 deployContracts.id = '004_ingest_update'
 deployContracts.tags = ['ingest']
-deployContracts.skip = () => isHardhat
+deployContracts.skip = () => isGoerli || isHardhat
 
 module.exports = deployContracts

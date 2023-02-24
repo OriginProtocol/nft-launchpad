@@ -4,6 +4,7 @@ const { placeholders } = require('../ingest.config.js')
 const {
   isPubnet,
   deployWithConfirmation,
+  isGoerli,
   withConfirmation,
   getTxOpts
 } = require('../utils/deploy')
@@ -143,5 +144,6 @@ const deployContracts = async ({ getNamedAccounts, deployments }) => {
 
 deployContracts.id = '001_ingest'
 deployContracts.tags = ['ingest']
+deployContracts.skip = () => isGoerli
 
 module.exports = deployContracts
